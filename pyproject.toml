@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pkagent"
+version = "0.1.0"
+description = "A Python-native agentic workflow for population pharmacokinetic modeling with structured natural-language priors."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "PKAgent authors" }]
+keywords = [
+    "population pharmacokinetics",
+    "PopPK",
+    "nonlinear mixed effects",
+    "NLME",
+    "FOCE-I",
+    "large language model",
+    "agentic AI",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "numba>=0.58",
+    "matplotlib>=3.7",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+gemini = ["google-generativeai>=0.5"]
+anthropic = ["anthropic>=0.34"]
+all = ["google-generativeai>=0.5", "anthropic>=0.34"]
+
+[project.urls]
+Homepage = "https://github.com/Gumgo91/PKAgent"
+Issues = "https://github.com/Gumgo91/PKAgent/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pkagent = ["py.typed"]
