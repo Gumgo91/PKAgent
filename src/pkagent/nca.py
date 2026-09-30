@@ -162,8 +162,13 @@ def run_nca(dataset, output=1):
         r['ID'] = sid if not isinstance(sid, np.generic) else sid.item()
         rows.append(r)
     t, y = np.asarray(pooled_t), np.asarray(pooled_y)
-    shape = (_pooled_shape(t, y) if len(extravascular_votes) >= 5 else
-             'undetermined (fewer than five subjects with two or more samples in the first dosing interval)')
+    if len(extravascular_votes) < 5:
+        shape = 'undetermined (fewer than five subjects with two or more samples in the first dosing interval)'
+    elif len(rows) >= 5:           # per-subject profiles: the majority of subjects decides
+        shape = 'rises to a peak' if sum(extravascular_votes) > len(extravascular_votes) / 2 else \
+            'declines from the first sample'
+    else:
+        shape = _pooled_shape(t, y)
     infusions = [(r, a) for r, a in first_rates if r > 0]
     out = dict(output=output, subjects_with_nca=len(rows), subjects_insufficient=skipped,
                first_doses=dict(infusions=len(infusions), bolus_or_extravascular=len(first_rates) - len(infusions),
