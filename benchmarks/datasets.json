@@ -1,0 +1,113 @@
+{
+ "pheno": {
+  "file": "pheno.csv",
+  "source": "nlmixr2data::pheno_sd (R package nlmixr2data 2.0.10); Grasela and Donn 1985",
+  "description": "Phenobarbital in 59 preterm neonates. Each infant received an intravenous loading dose followed by intravenous maintenance doses (bolus) for seizure prevention; serum concentrations were measured during routine monitoring (1 to 6 samples per infant). Columns: ID; TIME in hours; AMT dose in mg; DV serum phenobarbital concentration in mg/L; EVID and MDV follow NONMEM conventions; WT birth weight in kg; APGR 5-minute Apgar score (1 to 10).",
+  "knowledge": "In these neonates, phenobarbital clearance and volume of distribution are directly proportional to body weight, and infants with a 5-minute Apgar score below 5 have a larger volume of distribution.",
+  "reference": {
+   "source": "NONMEM 7.4.2 FOCE-I run of the canonical NONMEM example (Pharmpy test data pheno_real.mod/.ext); Boeckmann, Sheiner and Beal 1994",
+   "structure": {
+    "compartments": 1,
+    "absorption": "iv",
+    "elimination": "linear"
+   },
+   "model": "CL = THETA1*WT*exp(eta1); V = THETA2*WT*(1 + THETA3*[APGR<5])*exp(eta2); proportional residual error",
+   "covariates": [
+    "CL~WT (proportional, exponent 1)",
+    "V~WT (proportional, exponent 1)",
+    "V~APGR<5 (categorical)"
+   ],
+   "estimates": {
+    "CL_per_kg": 0.00469555,
+    "V_per_kg": 0.984258,
+    "APGR_LT5_fractional_increase_in_V": 0.15892,
+    "omega2_CL": 0.0293508,
+    "omega2_V": 0.027906,
+    "sigma2_proportional": 0.013241
+   },
+   "units": {
+    "CL_per_kg": "L/h/kg",
+    "V_per_kg": "L/kg"
+   },
+   "ofv_nonmem": 586.27605628,
+   "note": "OFV excludes the normal constant (PKPy2 OFV = NONMEM OFV + 155*log(2*pi) for an exact likelihood)"
+  }
+ },
+ "remifentanil": {
+  "file": "remifentanil.csv",
+  "source": "nlme::Remifentanil (R package nlme 3.1.168), converted to NONMEM event records by prepare_data.py; Minto et al. 1997",
+  "description": "Remifentanil in 65 healthy adults aged 20 to 85 years. Each subject received one constant-rate intravenous infusion for 4 to 20 minutes, with frequent arterial sampling during and after the infusion (18 to 52 samples per subject). Columns: ID; TIME in minutes from the start of the infusion; AMT infused amount in micrograms and RATE infusion rate in micrograms per minute (dose records); DV arterial remifentanil concentration in ng/mL; EVID and MDV follow NONMEM conventions; AGE in years; SEX (1 male, 0 female); HT height in cm; WT weight in kg; BSA body surface area in m2; LBM lean body mass in kg (James formula).",
+  "knowledge": "Remifentanil disposition follows three compartments. In adults its volumes and clearances change linearly with age (centered at 40 years) and with lean body mass (centered at 55 kg) rather than with total body weight, and sex has no effect beyond lean body mass.",
+  "reference": {
+   "source": "Minto CF et al. Anesthesiology 1997;86:10-23 (final covariate model, as reproduced in the Minto model summary used for target-controlled infusion)",
+   "structure": {
+    "compartments": 3,
+    "absorption": "iv",
+    "elimination": "linear"
+   },
+   "model": "V1 = 5.1 - 0.0201(AGE-40) + 0.072(LBM-55); V2 = 9.82 - 0.0811(AGE-40) + 0.108(LBM-55); V3 = 5.42; CL = 2.6 - 0.0162(AGE-40) + 0.0191(LBM-55); Q2 = 2.05 - 0.0301(AGE-40); Q3 = 0.076 - 0.00113(AGE-40)",
+   "covariates": [
+    "V1~AGE (linear)",
+    "V1~LBM (linear)",
+    "V2~AGE (linear)",
+    "V2~LBM (linear)",
+    "CL~AGE (linear)",
+    "CL~LBM (linear)",
+    "Q2~AGE (linear)",
+    "Q3~AGE (linear)"
+   ],
+   "estimates": {
+    "V1": 5.1,
+    "V2": 9.82,
+    "V3": 5.42,
+    "CL": 2.6,
+    "Q2": 2.05,
+    "Q3": 0.076
+   },
+   "linear_slopes_absolute": {
+    "V1~AGE": -0.0201,
+    "V1~LBM": 0.072,
+    "V2~AGE": -0.0811,
+    "V2~LBM": 0.108,
+    "CL~AGE": -0.0162,
+    "CL~LBM": 0.0191,
+    "Q2~AGE": -0.0301,
+    "Q3~AGE": -0.00113
+   },
+   "units": {
+    "volumes": "L",
+    "clearances": "L/min"
+   },
+   "note": "Typical values at AGE 40 and LBM 55. The published model is additive-linear; a multiplicative linear form 1 + b(z - center) has b = slope / typical value. Interindividual and residual variability were not verified."
+  }
+ },
+ "oral_mm": {
+  "file": "oral_mm.csv",
+  "source": "nlmixr2data::Oral_1CPTMM (R package nlmixr2data 2.0.10; simulated for the nlmixr ACOP 2016 poster, Schoemaker et al.); first 10 subjects per dose level and 25 of 58 samples, by prepare_data.py",
+  "description": "Simulated phase 1 study of an orally administered drug in 40 subjects. Ten subjects each received 10, 20, 40 or 80 mg as a single oral dose followed, from 72 hours, by seven once-daily doses; plasma concentrations were measured over the single-dose interval, at each trough and after the last dose (25 samples per subject). Columns: ID; TIME in hours; AMT dose in micrograms; DV plasma concentration in micrograms per litre; EVID and MDV follow NONMEM conventions; CMT is 1 for doses (depot) and 2 for observations (central compartment); DOSE dose level in mg.",
+  "knowledge": "The elimination of this drug is saturable (Michaelis-Menten kinetics) within the studied dose range, and its disposition is adequately described by one compartment.",
+  "reference": {
+   "source": "Simulation model of the dataset (nlmixr2data documentation and the ACOP 2016 poster): one-compartment model with first-order absorption and Michaelis-Menten elimination, 30% IIV on every parameter and 20% residual error",
+   "structure": {
+    "compartments": 1,
+    "absorption": "first_order",
+    "elimination": "Michaelis-Menten"
+   },
+   "model": "1-cmt, first-order absorption, Michaelis-Menten elimination; IIV on Ka, V, VMAX, KM; proportional error",
+   "covariates": [],
+   "estimates": {
+    "Ka": 1.0,
+    "V": 70.0,
+    "VMAX": 1000.0,
+    "KM": 250.0
+   },
+   "units": {
+    "Ka": "1/h",
+    "V": "L",
+    "VMAX": "ug/h",
+    "KM": "ug/L"
+   },
+   "note": "Typical values are those of the simulation (geometric means of the simulated individual values in the subset: Ka 0.982, V 67.2, VMAX 981, KM 232)."
+  }
+ }
+}

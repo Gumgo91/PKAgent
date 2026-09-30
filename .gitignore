@@ -41,3 +41,11 @@ Thumbs.db
 output/
 *.log
 *.pkl
+
+# Benchmark: source data are exported from the R packages (benchmarks/export_data.R) and not redistributed;
+# run outputs, evaluations and reference fits are produced by the scripts
+benchmarks/data/
+benchmarks/runs/
+benchmarks/evaluation/
+benchmarks/reference_fits/
+paper/build/

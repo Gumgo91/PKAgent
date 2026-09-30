@@ -4,51 +4,48 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pkagent"
-version = "0.1.0"
-description = "A Python-native agentic workflow for population pharmacokinetic modeling with structured natural-language priors."
+version = "2.0.0.dev0"
+description = "An LLM agent that develops population pharmacokinetic and pharmacodynamic models with the PKPy2 estimation engine."
 readme = "README.md"
-requires-python = ">=3.10"
-license = { text = "MIT" }
-authors = [{ name = "PKAgent authors" }]
+requires-python = ">=3.13,<3.14"
+license = "MIT"
+authors = [{ name = "Hyunseung Kong" }, { name = "Inyoung Kim" }]
 keywords = [
-    "population pharmacokinetics",
-    "PopPK",
-    "nonlinear mixed effects",
-    "NLME",
-    "FOCE-I",
-    "large language model",
-    "agentic AI",
+  "population pharmacokinetics",
+  "PopPK",
+  "PK/PD",
+  "nonlinear mixed effects",
+  "large language model",
+  "agent",
+  "tool calling",
 ]
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Intended Audience :: Science/Research",
-    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: OS Independent",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 dependencies = [
-    "numpy>=1.24",
-    "scipy>=1.10",
-    "pandas>=2.0",
-    "numba>=0.58",
-    "matplotlib>=3.7",
-    "requests>=2.31",
+  "pkpy2>=0.2.1",
+  "numpy>=2.2,<3",
+  "scipy>=1.16,<2",
+  "pandas>=2.2",
+  "matplotlib>=3.8",
+  "openai>=2.0",
 ]
 
 [project.optional-dependencies]
-gemini = ["google-generativeai>=0.5"]
-anthropic = ["anthropic>=0.34"]
-all = ["google-generativeai>=0.5", "anthropic>=0.34"]
+test = ["pytest>=8"]
+
+[project.scripts]
+pkagent = "pkagent.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/Gumgo91/PKAgent"
-Issues = "https://github.com/Gumgo91/PKAgent/issues"
+Repository = "https://github.com/Gumgo91/PKAgent"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.package-data]
-pkagent = ["py.typed"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]

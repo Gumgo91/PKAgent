@@ -1,0 +1,40 @@
+{
+ "reason": "Excluded on 2026-10-01: the published estimates are incomplete (Q, IIV and residual error not openly reported; linear clearance differs tenfold between reports of the same group) and the public dataset holds 321 of the 443 concentrations, so no verifiable reference model exists; a PKPy2 fit of the reported structure did not converge in 30 minutes.",
+ "entry": {
+  "file": "nimotuzumab.csv",
+  "source": "nlmixr2data::nimoData (R package nlmixr2data 2.0.10), DV converted from log to natural scale by prepare_data.py; Rodriguez-Vera et al. 2015",
+  "description": "Nimotuzumab, a humanized anti-EGFR IgG1 monoclonal antibody, in 12 women with advanced breast cancer. Three patients each received 50, 100, 200 or 400 mg as intravenous infusions (0.4 to 3 hours) once weekly for about 10 weeks, with serum sampling over 94 days (24 to 28 samples per patient). Columns: ID; TIME in hours; AMT dose in mg and RATE infusion rate in mg/h (dose records); DV serum nimotuzumab concentration in ug/mL (mg/L); OCC dosing occasion; EVID and MDV follow NONMEM conventions; WGT weight in kg (recorded per occasion); BSA body surface area in m2; AGE in years; HGT height in cm; DOS dose level in mg.",
+  "knowledge": "Nimotuzumab shows target-mediated drug disposition through binding to EGFR: describe it with a two-compartment quasi-steady-state TMDD model with interindividual variability on clearance, central volume and KSS, and no covariate effects.",
+  "reference": {
+   "source": "Rodriguez-Vera L et al. J Clin Pharmacol 2015;55:888-898 (model structure, abstract); estimates from the same group's WCP2018 abstract (doi:10.1254/jpssuppl.WCP2018.0_PO1-8-42)",
+   "structure": {
+    "compartments": 2,
+    "absorption": "iv",
+    "elimination": "quasi-steady-state TMDD"
+   },
+   "model": "two-compartment QSS-TMDD with target synthesis (ksyn), degradation (kdeg) and complex internalization (kint); lognormal IIV on CL, V1 and KSS; additive error on log concentrations; no covariates",
+   "covariates": [],
+   "estimates": {
+    "CL": 0.0007,
+    "V1": 1.43,
+    "V2": 18.5,
+    "KSS": 6.96,
+    "KINT": 0.148,
+    "KDEG": 5.5,
+    "KSYN": 1.43,
+    "R0": 0.26
+   },
+   "units": {
+    "CL": "L/h",
+    "V1": "L",
+    "V2": "L",
+    "KSS": "ug/mL",
+    "KINT": "1/h",
+    "KDEG": "1/h",
+    "KSYN": "ug/mL/h",
+    "R0": "ug/mL (= KSYN/KDEG)"
+   },
+   "note": "Q, the IIV variances and the residual SD are not openly reported. A 2020 paper of the same group cites CL = 0.00703 L/h, ten times the WCP2018 value. The public dataset has 321 of the 443 concentrations of the original analysis."
+  }
+ }
+}

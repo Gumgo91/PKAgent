@@ -1,124 +1,72 @@
 # PKAgent
 
-A Python-native agentic workflow for population pharmacokinetic (PopPK)
-modeling with structured natural-language priors.
+PKAgent is an LLM agent that develops population pharmacokinetic (PopPK) and PK/PD models. The language model works
+like a pharmacometrician: it looks at the data, proposes models, fits them, reads the diagnostics and decides what to
+test next, entirely through tool calls. All estimation, diagnostics and statistics are computed by
+[PKPy2](https://github.com/Gumgo91/PKPy2), a validated Python engine for nonlinear mixed-effects models. Models are
+fitted with the Laplace (FOCE-I-type) objective by default; the importance-sampled marginal likelihood with PKPy2's
+two-bank convergence audit is available on request. No NONMEM installation is needed.
 
-PKAgent combines a FOCE-I-inspired Laplace approximation (full-Hessian
-inner step, log-parameter regularization, Numba-JIT multi-dose
-prediction kernel) with an LLM-based agentic control loop. A free-form
-analyst sentence is compiled into a typed constraint object with hard
-(forbidden actions, fixed parameters, route overrides) and soft
-(compartment preferences, ordinal absorption-speed priors) layers, and
-that object is consulted by every model-building agent **and** by the
-deterministic likelihood-ratio and AIC selection rules.
+An analyst can add expert knowledge in plain language (for example "clearance and volume scale linearly with body
+weight"). The agent encodes it in the model as structure, fixed values, bounds or covariate relationships, tests it
+against the data, and reports the evidence.
 
-This repository contains the source code and the three public datasets
-needed to reproduce the six-run evaluation described in the manuscript.
+## How it works
 
-## Repository layout
+The agent (any tool-calling model on [OpenRouter](https://openrouter.ai), for example `openai/gpt-6.1-sol` or
+`anthropic/claude-opus-5.5`) calls these tools:
 
-```
-pkagent/
-├── src/pkagent/             # the package
-├── data/pkgpt_real/         # public datasets (warfarin, theophylline, tobramycin)
-├── examples/run_benchmark.py  # six-run evaluation from the manuscript
-├── pyproject.toml
-├── .env.example             # template for LLM API key
-└── README.md
-```
+| Tool | What it does |
+|---|---|
+| `describe_data`, `plot_data`, `run_nca` | data summary, concentration-time plots, non-compartmental analysis and starting values |
+| `add_data_column` | derived columns (indicators, unit conversions) with a recorded expression |
+| `fit_models` | fit up to six JSON model specifications in parallel with PKPy2 |
+| `list_models`, `get_model`, `compare_models` | model registry, likelihood-ratio tests, AIC/BIC |
+| `view_plots`, `run_vpc`, `screen_covariates` | goodness-of-fit and individual plots (as images), visual predictive checks, eta-covariate screening |
+| `covariate_search` | stepwise covariate modeling with the fits of each step run in parallel |
+| `resample_uncertainty` | bootstrap or SIR for the final model |
+| `finalize_model` | final model and written report |
+
+Model specifications are JSON (structure from the PKPy2 library: 1-3 compartments, first-order, zero-order or transit
+absorption, lag, bioavailability, Michaelis-Menten elimination, TMDD, parent-metabolite, direct, effect-compartment
+and indirect-response PD; IIV with correlated blocks, interoccasion variability, power/exponential/linear/categorical
+covariates, residual models per output, fixed values and bounds). The agent never runs code.
+
+Every session writes a folder with `report.md` (final model table, the agent's report, all models, figures),
+`results.json`, `transcript.jsonl` (every LLM turn), `tool_log.jsonl` (every tool call with its result) and one folder
+per fitted model (specification, PKPy2 fit, diagnostics, plots).
 
 ## Installation
 
-Requires Python 3.10 or newer.
+Python 3.13.
 
 ```bash
 git clone https://github.com/Gumgo91/PKAgent.git
 cd PKAgent
-pip install -e .
+python -m pip install .
 ```
 
-This installs the core dependencies (numpy, scipy, pandas, numba,
-matplotlib, requests). If you want to use the Google Gemini direct API
-or Anthropic Claude instead of the default OpenRouter routing, install
-the corresponding extra:
+PKAgent needs an OpenRouter API key in the environment or in a `.env` file: `OPENROUTER_API_KEY=...`
+
+## Usage
 
 ```bash
-pip install -e ".[gemini]"      # adds google-generativeai
-pip install -e ".[anthropic]"   # adds anthropic
-pip install -e ".[all]"         # both
+pkagent run data.csv --description description.txt --knowledge "Clearance scales with creatinine clearance." \
+    --model claude --out results/run1
 ```
 
-## Configure an LLM backend
+`--model` accepts `gpt`, `claude` or any OpenRouter model id. Budgets: `--max-fits`, `--max-turns`, `--max-hours`,
+`--max-cost` (USD). Parallel fitting: `--workers` processes with `--threads` Numba threads each.
 
-Copy the template and add one key. PKAgent picks a backend in this
-priority order: OpenRouter > Anthropic > Gemini direct > deterministic
-rule-based fallback (used automatically if no key is set).
-
-```bash
-cp .env.example .env
-# then edit .env and fill in one key
+```python
+from pkagent import run, Settings
+run('data.csv', 'results/run1', description='...', knowledge='...', settings=Settings(model='openai/gpt-6.1-sol'))
 ```
 
-## Run the six-run evaluation
+## Benchmarks
 
-The benchmark script runs three drugs (warfarin, theophylline,
-tobramycin) under with-hint and without-hint scenarios — exactly the
-six runs reported in the manuscript. The hint sentences match those
-quoted in Methods section 2.7 verbatim.
-
-```bash
-python examples/run_benchmark.py
-```
-
-Useful options:
-
-```bash
-python examples/run_benchmark.py --drug theophylline    # one drug only
-python examples/run_benchmark.py --without-hint-only    # skip with-hint
-python examples/run_benchmark.py --with-hint-only       # skip without-hint
-```
-
-Per-run wall-clock on commodity hardware:
-
-| Drug         | Approximate run time |
-| ------------ | -------------------- |
-| Theophylline | 4–5 min              |
-| Warfarin     | 14–15 min            |
-| Tobramycin   | 2.5–3 hr             |
-
-Tobramycin time is dominated by the two-compartment forward
-covariate search; reducing the covariate-search depth shortens it.
-
-## Hint sentences used in the manuscript
-
-| Drug | Scenario | Sentence |
-| ---- | -------- | -------- |
-| Theophylline | with-hint    | "Theophylline is an oral drug with rapid absorption and no lag." |
-| Warfarin     | with-hint    | "Warfarin is an oral drug with a measurable absorption lag." |
-| Tobramycin   | with-hint    | "Tobramycin is given by IV infusion and distributes into a peripheral compartment with renal elimination." |
-| all          | without-hint | (no sentence — the agent runs from the dataset and NCA anchors alone) |
-
-These exact strings are wired into `examples/run_benchmark.py` so the
-benchmark output is reproducible against the manuscript without any
-manual configuration.
-
-## Data
-
-The three public datasets live in `data/pkgpt_real/` in NONMEM-style
-tabular form (columns: ID, TIME, DV, AMT, EVID, MDV, RATE, CMT, and
-demographic covariates where applicable). They are the same Monolix
-Suite reference datasets used by the PKGPT benchmark.
-
-| File | Subjects | Route | Sampling |
-| ---- | -------- | ----- | -------- |
-| `theo.csv`       | 12  | oral          | sparse (≤11 samples/subject, 132 total observations) |
-| `warfarin.csv`   | 32  | oral          | rich (≥8 samples/subject)                            |
-| `tobramycin.csv` | 97  | IV infusion   | sparse peak-and-trough (2–3 samples/subject)         |
-
-## Citation
-
-If you use PKAgent in academic work, please cite the manuscript (citation
-will appear here on publication).
+`benchmarks/run_benchmark.py` runs public datasets with published reference models, without and with a one-sentence
+expert statement, for each LLM. See `benchmarks/README.md`.
 
 ## License
 
