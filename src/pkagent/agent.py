@@ -27,7 +27,7 @@ def run(data_path, out_dir, description, knowledge=None, settings=None, objectiv
     (out / 'run.json').write_text(json.dumps(dict(
         model=settings.model, data=str(data_path), description=description, knowledge=knowledge, objective=objective,
         seed=settings.seed, budget=vars(settings.budget), reasoning_effort=settings.reasoning_effort,
-        started=time.strftime('%Y-%m-%d %H:%M:%S')), indent=1), encoding='utf-8')
+        started=time.strftime('%Y-%m-%d %H:%M:%S'), versions=_versions()), indent=1), encoding='utf-8')
     messages = [dict(role='system', content=SYSTEM),
                 dict(role='user', content=task(description, knowledge, objective, settings.budget))]
     nudges, final_requested = 0, False
@@ -85,6 +85,24 @@ def run(data_path, out_dir, description, knowledge=None, settings=None, objectiv
         finally:
             session.close()
     return report
+
+
+def _versions():
+    """PKAgent and PKPy2 versions and the PKAgent git commit (with a flag for uncommitted changes), if available."""
+    import subprocess
+    import pkpy2
+    from . import __version__
+    out = dict(pkagent=__version__, pkpy2=pkpy2.__version__)
+    root = Path(__file__).resolve().parents[2]
+    try:
+        out['pkagent_commit'] = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=root, capture_output=True,
+                                               text=True, timeout=10).stdout.strip() or None
+        dirty = subprocess.run(['git', 'status', '--porcelain', '--', 'src'], cwd=root, capture_output=True,
+                               text=True, timeout=10).stdout.strip()
+        out['pkagent_src_modified'] = bool(dirty)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return out
 
 
 KEEP_IMAGE_MESSAGES = 2      # plots stay in the conversation for this many image messages, then become text
