@@ -162,6 +162,8 @@ class Session:
                    aic=s.get('aic'), bic=s.get('bic'))
         if s.get('distinct_local_optima_ofv'):
             row['distinct_local_optima_ofv'] = s['distinct_local_optima_ofv']
+        if s.get('ofv_note'):
+            row['ofv_note'] = s['ofv_note']
         if rec['parent'] and self.models.get(rec['parent'], {}).get('ofv') is not None and s.get('ofv') is not None:
             p = self.models[rec['parent']]
             row['delta_ofv_vs_parent'] = round(s['ofv'] - p['ofv'], 3)

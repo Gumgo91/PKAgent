@@ -265,14 +265,35 @@ def _json(v):
     return str(v)
 
 
+def log_scale_jacobian(res):
+    """2 sum(log DV) over the uncensored observations of outputs with a log-normal residual model. PKPy2 reports
+    -2 log L of log(DV) for them; adding this term gives -2 log L of DV itself, comparable with additive,
+    proportional and combined error models of the same data."""
+    problem = res.problem
+    lognormal = [o for o in range(problem.n_out) if problem.form[o] == 1]
+    if not lognormal:
+        return 0.
+    total = 0.
+    for s in problem.subjects:
+        keep = np.asarray(s.obs_used, dtype=bool) & np.isin(s.obs_out, lognormal) & (np.asarray(s.obs_cens) == 0)
+        total += 2. * float(np.sum(np.log(np.asarray(s.obs_dv, dtype=float)[keep])))
+    return total
+
+
 def summarize(res, norm):
     d = res.to_dict()
     status = 'converged' if res.converged else 'not converged'
     est = d.get('estimation', {}) or {}
     method = est.get('method', 'importance')
     message = est.get('message') if method == 'laplace' else (est.get('refinement') or {}).get('message')
+    jac = log_scale_jacobian(res)
     out = dict(status=status, estimation=method, engine_status=d['status'], message=message,
-               ofv=_r(d['ofv'], 8), n_estimated=int(d['n_param']), aic=_r(d['aic'], 8), bic=_r(d['bic'], 8))
+               ofv=_r(d['ofv'] + jac, 8), n_estimated=int(d['n_param']), aic=_r(d['aic'] + jac, 8),
+               bic=_r(d['bic'] + jac, 8))
+    if jac:
+        out['ofv_log_scale'] = _r(d['ofv'], 8)
+        out['ofv_note'] = ('log-normal residual: the OFV includes 2*sum(log DV), so it is comparable with models '
+                           'that use additive, proportional or combined error on the same data')
     audit = d.get('audit') or {}
     if method == 'laplace':
         out['audit'] = dict(newton_decrement=_r(audit.get('newton_decrement', math.nan), 3),
