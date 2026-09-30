@@ -46,6 +46,7 @@ output/
 # run outputs, evaluations and reference fits are produced by the scripts
 benchmarks/data/
 benchmarks/runs/
+benchmarks/runs_prelim/
 benchmarks/evaluation/
 benchmarks/reference_fits/
 paper/build/

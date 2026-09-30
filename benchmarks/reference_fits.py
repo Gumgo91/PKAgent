@@ -68,7 +68,7 @@ def main(names):
     for name in names:
         d = DATASETS.get(name) or dict(file=f'{name}.csv', description=name)
         out = HERE / 'reference_fits' / name
-        s = Session(HERE / 'data' / d['file'], out, Settings(workers=1, threads_per_worker=6, fit_wall_seconds=3600., laplace_starts=2,
+        s = Session(HERE / 'data' / d['file'], out, Settings(workers=1, threads_per_worker=4, fit_wall_seconds=3600., laplace_starts=2,
                                                                budget=Budget(max_fits=10)), d['description'])
         try:
             for col, expr, why in SPECS[name]['prepare']:
