@@ -31,31 +31,51 @@ def _save(fig, n):
     plt.close(fig)
 
 
+def _range(text):
+    lo, hi = str(text).split('-', 1) if isinstance(text, str) and '-' in str(text)[1:] else (text, text)
+    return float(lo), float(hi)
+
+
 def figure_recovery(runs):
-    """Median typical-value ratio of each reference parameter, one panel per dataset."""
+    """Subject-level typical-value ratio (final model / reference model) of each reference parameter: a line from the
+    lowest to the highest ratio over subjects and a marker at the median, one row per run, one panel per dataset."""
+    from matplotlib.ticker import FixedLocator, NullLocator
     names = [d for d in DATASETS if d in set(runs['dataset'])]
-    fig, axes = plt.subplots(1, len(names), figsize=(4.2 * len(names), 4.4), squeeze=False)
+    fig, axes = plt.subplots(1, len(names), figsize=(4.4 * len(names), 5.2), squeeze=False)
     for ax, ds in zip(axes[0], names):
         sub = runs[runs['dataset'] == ds]
         params = [c[len('ratio_'):-len('_median')] for c in sub.columns if c.startswith('ratio_') and
                   c.endswith('_median') and sub[c].notna().any()]
+        slots = [(c, m) for c in COND for m in LLM]
         for i, p in enumerate(params):
-            for j, (cond, llm) in enumerate([(c, m) for c in COND for m in LLM]):
-                vals = sub[(sub['condition'] == cond) & (sub['llm'] == llm)][f'ratio_{p}_median'].dropna()
-                y = i + (j - 1.5) * .16
-                ax.scatter(vals, [y] * len(vals), marker=MARK[llm], s=28, color=COLOR[cond],
-                           edgecolor='white', linewidth=.5, zorder=3)
+            k = 0
+            for cond, llm in slots:
+                cell = sub[(sub['condition'] == cond) & (sub['llm'] == llm)].sort_values('rep')
+                for _, r in cell.iterrows():
+                    if pd.isna(r.get(f'ratio_{p}_median')):
+                        continue
+                    lo, hi = _range(r[f'ratio_{p}_range'])
+                    y = i + (k - 5.5) * .065
+                    ax.plot([lo, hi], [y, y], color=COLOR[cond], lw=1.2, alpha=.9, solid_capstyle='round')
+                    ax.scatter([r[f'ratio_{p}_median']], [y], marker=MARK[llm], s=22, color=COLOR[cond],
+                               edgecolor='white', linewidth=.4, zorder=3)
+                    k += 1
         ax.axvline(1, color='#1F2933', lw=.8)
         ax.axvspan(.8, 1.25, color='#E8F1FB', zorder=0)
         ax.set_xscale('log')
+        ticks = [.5, .67, .8, 1, 1.25, 1.5, 2]
+        ax.xaxis.set_major_locator(FixedLocator(ticks))
+        ax.xaxis.set_minor_locator(NullLocator())
+        ax.set_xticklabels([f'{t:g}' for t in ticks])
+        ax.set_xlim(.45, 2.2)
         ax.set_yticks(range(len(params)))
         ax.set_yticklabels(params)
-        ax.invert_yaxis()
+        ax.set_ylim(len(params) - .5, -.5)
         ax.set_title(LABEL.get(ds, ds), fontsize=11)
-        ax.set_xlabel('typical value, final / reference (median over subjects)')
-    handles = [plt.Line2D([], [], marker=MARK[m], color=COLOR[c], linestyle='', label=f'{LLM[m]}, {COND[c].lower()}')
+        ax.set_xlabel('typical value, final / reference model')
+    handles = [plt.Line2D([], [], marker=MARK[m], color=COLOR[c], linestyle='-', label=f'{LLM[m]}, {COND[c].lower()}')
                for c in COND for m in LLM]
-    fig.legend(handles=handles, loc='lower center', ncol=4, frameon=False, bbox_to_anchor=(.5, -.06))
+    fig.legend(handles=handles, loc='lower center', ncol=4, frameon=False, bbox_to_anchor=(.5, -.05))
     _save(fig, 2)
 
 

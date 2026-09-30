@@ -124,8 +124,8 @@ def _pooled_shape(t, y):
     med = np.array([np.median(y[idx == b]) if np.any(idx == b) else np.nan for b in range(len(edges) - 1)])
     first, peak = med[0], np.nanmax(med)
     if np.nanargmax(med) > 0 and first < .8 * peak:
-        return 'rises to a peak (extravascular or infusion)'
-    return 'declines from the first sample (intravenous bolus)'
+        return 'rises to a peak'
+    return 'declines from the first sample'
 
 
 def run_nca(dataset, output=1):
@@ -136,6 +136,7 @@ def run_nca(dataset, output=1):
     rows, pooled_t, pooled_y, skipped = [], [], [], 0
     doses = df[dose_m]
     extravascular_votes = []
+    first_rates = []
     for sid, g in df.groupby('ID', sort=False):
         gd = doses[doses['ID'] == sid].sort_values('TIME')
         go = g[obs_m[g.index]] if len(g) else g
@@ -145,6 +146,7 @@ def run_nca(dataset, output=1):
         t0, amount = float(gd['TIME'].iloc[0]), float(gd['AMT'].iloc[0])
         t_next = float(gd['TIME'].iloc[1]) if len(gd) > 1 else math.inf
         rate = float(gd['RATE'].iloc[0]) if 'RATE' in gd and not math.isnan(gd['RATE'].iloc[0]) else 0.
+        first_rates.append((rate, amount))
         interval = go[(go['TIME'] > t0) & (go['TIME'] < t_next)]
         t = interval['TIME'].to_numpy(float) - t0
         c = interval['DV'].to_numpy(float)
@@ -162,10 +164,15 @@ def run_nca(dataset, output=1):
     t, y = np.asarray(pooled_t), np.asarray(pooled_y)
     shape = (_pooled_shape(t, y) if len(extravascular_votes) >= 5 else
              'undetermined (fewer than five subjects with two or more samples in the first dosing interval)')
+    infusions = [(r, a) for r, a in first_rates if r > 0]
     out = dict(output=output, subjects_with_nca=len(rows), subjects_insufficient=skipped,
+               first_doses=dict(infusions=len(infusions), bolus_or_extravascular=len(first_rates) - len(infusions),
+                                note='times, rates and durations are in the units of the TIME column'),
                profile=shape,
                subjects_peaking_after_first_sample=int(sum(extravascular_votes)),
                subjects_with_two_or_more_samples=len(extravascular_votes))
+    if infusions:
+        out['first_doses']['median_infusion_duration'] = float(np.median([a / r for r, a in infusions]))
     if rows:
         med = lambda k, rs=rows: (float(np.median([r[k] for r in rs if r.get(k) is not None]))
                                   if any(r.get(k) is not None for r in rs) else None)
@@ -176,12 +183,22 @@ def run_nca(dataset, output=1):
         out['median']['tmax_subjects'] = len(early)
         out['per_subject'] = [{k: (round(v, 4) if isinstance(v, float) else v) for k, v in r.items()}
                               for r in rows[:40]]
+        levels = {}
+        for r in rows:
+            levels.setdefault(round(r['dose'], 6), []).append(r)
+        if len(levels) >= 2 and all(len(v) >= 3 for v in levels.values()):     # dose proportionality
+            out['by_dose'] = [dict(dose=d, subjects=len(v), median_cl=med('cl', v),
+                                   median_auc_inf_per_dose=(float(np.median([r['auc_inf'] / d for r in v
+                                                                             if r.get('auc_inf')]))
+                                                            if any(r.get('auc_inf') for r in v) else None),
+                                   median_cmax_per_dose=float(np.median([r['cmax'] / d for r in v])))
+                              for d, v in sorted(levels.items())]
         cl, vz = out['median'].get('cl'), out['median'].get('vz')
         start = {}
         if cl and vz:
             start = dict(CL=round(cl, 4), V=round(vz, 4))
             k = cl / vz
-            if 'rises' in out['profile'] and out['median']['tmax']:
+            if 'rises' in out['profile'] and out['median']['tmax'] and not infusions:    # not for infusions
                 ka = _ka_from_tmax(out['median']['tmax'], k)
                 if ka:
                     start['Ka'] = round(ka, 4)

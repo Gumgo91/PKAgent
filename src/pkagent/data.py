@@ -72,6 +72,7 @@ class Dataset:
                    observations=int(obs.sum()), dose_records=int(dose.sum()),
                    observations_per_subject=_range(per_subject_obs), doses_per_subject=_range(per_subject_dose),
                    time_range=[float(df['TIME'].min()), float(df['TIME'].max())],
+                   units_note='times, durations and rates are in the units of the TIME column (see the description)',
                    columns=list(df.columns))
         d = df[dose]
         out['doses'] = dict(amounts=_levels(d['AMT']), compartments=_levels(d['CMT']) if 'CMT' in d else [1],
@@ -81,7 +82,7 @@ class Dataset:
         if out['doses']['infusions']:
             rates = d['RATE'].fillna(0)
             dur = (d['AMT'] / rates.where(rates > 0)).dropna()
-            out['doses']['infusion_durations_h'] = _levels(dur.round(3)) if len(dur) else []
+            out['doses']['infusion_durations'] = _levels(dur.round(3)) if len(dur) else []
             out['doses']['modeled_rate_records'] = int((rates < 0).sum())
         o = df[obs]
         out['observations_summary'] = dict(dv_range=[float(o['DV'].min()), float(o['DV'].max())],
