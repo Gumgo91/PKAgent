@@ -53,6 +53,7 @@ class Settings:
     threads_per_worker: int = 4          # Numba threads in each fitting process
     fit_wall_seconds: float = 1800.      # wall-clock budget of one fit (Laplace minimization or importance refinement)
     laplace_starts: int = 1              # starts of the Laplace minimization (the agent's values, then perturbations)
+    bootstrap_seconds: float = 1800.     # time limit of a bootstrap (resample_uncertainty)
     laplace_seconds: float = 300.        # Laplace exploration budget before an importance refinement
     laplace_tolerance: float = .5        # a Laplace fit is converged when its Newton decrement is at most this (OFV)
     images: bool = True                  # let the agent look at diagnostic plots

@@ -24,7 +24,7 @@ The agent (any tool-calling model on [OpenRouter](https://openrouter.ai), for ex
 | `list_models`, `get_model`, `compare_models` | model registry, likelihood-ratio tests, AIC/BIC |
 | `view_plots`, `run_vpc`, `screen_covariates` | goodness-of-fit and individual plots (as images), visual predictive checks, eta-covariate screening |
 | `covariate_search` | stepwise covariate modeling with the fits of each step run in parallel |
-| `resample_uncertainty` | bootstrap or SIR for the final model |
+| `resample_uncertainty` | parallel bootstrap of the final model within a time limit |
 | `finalize_model` | final model and written report |
 
 Model specifications are JSON (structure from the PKPy2 library: 1-3 compartments, first-order, zero-order or transit

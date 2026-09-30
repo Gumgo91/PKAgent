@@ -75,12 +75,19 @@ class Session:
                     llm_turns_used=self.turns, llm_turns_left=b.max_turns - self.turns,
                     llm_cost_usd=round(self.llm_cost, 2))
 
-    def _check_budget(self, fits=0):
+    def _budget_problem(self, fits=0):
+        """Why `fits` more fits would exceed the budget, or None."""
         b = self.settings.budget
         if self.fits_used + fits > b.max_fits:
-            raise BudgetExhausted(f'fit budget exhausted ({self.fits_used}/{b.max_fits} used); finalize with the best model')
+            return f'fit budget exhausted ({self.fits_used}/{b.max_fits} used); finalize with the best model'
         if (time.time() - self.t0) / 3600 > b.max_hours:
-            raise BudgetExhausted('time budget exhausted; finalize with the best model')
+            return 'time budget exhausted; finalize with the best model'
+        return None
+
+    def _check_budget(self, fits=0):
+        problem = self._budget_problem(fits)
+        if problem:
+            raise BudgetExhausted(problem)
 
     def _new_id(self):
         return f'M{len(self.models) + 1:03d}'
@@ -290,16 +297,34 @@ class Session:
                    out_dir=str(fit_json.parent), covariates=covs)
         return self.pool.submit(engine.run_screen, job).result(timeout=3600)
 
-    def resample(self, model_id, method, **options):
+    def resample(self, model_id, method='bootstrap', n=100, **options):
+        """Nonparametric bootstrap of a converged model: refits in parallel on the worker pool (settings of the model
+        fits), stopped at the time limit (bootstrap_seconds, and the remaining time budget)."""
+        if method != 'bootstrap':
+            raise ValueError("only method='bootstrap' is available")
         rec, fit_json = self._saved(model_id)
-        n_fits = int(options.get('n', 100)) if method == 'bootstrap' else 0
         self._check_budget(0)
-        job = dict(spec=rec['spec'], data_csv=self.data_csv(rec['data_version']), fit_json=str(fit_json),
-                   method=method, seed=self.settings.seed, **options)
-        result = self.pool.submit(engine.run_uncertainty, job).result(timeout=6 * 3600)
-        if method == 'bootstrap':
-            result['note'] = f'{n_fits} bootstrap refits (not counted against the model-fit budget)'
-        rec.setdefault('resampling', {})[method] = result
+        n = max(1, min(int(n), 200))
+        left = self.settings.budget.max_hours * 3600 - (time.time() - self.t0)
+        seconds = max(60., min(self.settings.bootstrap_seconds, left - 300.))
+        deadline = time.time() + seconds
+        workers = max(1, self.settings.workers)
+        sizes = [n // workers + (1 if k < n % workers else 0) for k in range(workers)]
+        futures = [self.pool.submit(engine.run_bootstrap_chunk, dict(
+            spec=rec['spec'], data_csv=self.data_csv(rec['data_version']), fit_json=str(fit_json), n=size,
+            seed=self.settings.seed + 7919 * (k + 1), deadline=deadline,
+            laplace_tolerance=self.settings.laplace_tolerance)) for k, size in enumerate(sizes) if size]
+        chunks = []
+        for fut in futures:
+            chunk = fut.result(timeout=seconds + 3600)
+            if chunk.get('status') == 'error':
+                raise RuntimeError(chunk['error'])
+            chunks.append(chunk)
+        result = engine.bootstrap_summary(chunks, n)
+        result['time_limit_minutes'] = round(seconds / 60, 1)
+        result['note'] = ('bootstrap refits are not counted against the model-fit budget; replicates not started '
+                          'before the time limit are omitted')
+        rec.setdefault('resampling', {})['bootstrap'] = result
         return result
 
     # ------------------------------------------------------------------ covariate search
@@ -323,7 +348,10 @@ class Session:
         included = []
         remaining = list(cand)
         while remaining:
-            self._check_budget(len(remaining))
+            problem = self._budget_problem(len(remaining))
+            if problem:                                  # stop the search, keep what was found so far
+                history.append(dict(step='stopped', reason=problem))
+                break
             specs = []
             for c in remaining:
                 s = _raw_spec(self.models[current]['spec'])
@@ -355,7 +383,10 @@ class Session:
         changed = True
         while changed and included:
             changed = False
-            self._check_budget(len(included))
+            problem = self._budget_problem(len(included))
+            if problem:
+                history.append(dict(step='stopped', reason=problem))
+                break
             specs = []
             for c in included:
                 s = _raw_spec(self.models[current]['spec'])

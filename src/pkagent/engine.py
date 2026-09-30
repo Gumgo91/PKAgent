@@ -225,28 +225,48 @@ def _lvl(v):
     return str(int(v)) if float(v).is_integer() else str(v)
 
 
-def run_uncertainty(job):
-    """Bootstrap or SIR of a saved fit."""
+def run_bootstrap_chunk(job):
+    """One chunk of a nonparametric bootstrap: resample subjects, refit with the settings of the model fits (Laplace,
+    exact gradient, starting at the final estimates), until n replicates are done or the deadline (epoch seconds)."""
     try:
         import pkpy2
+        from pkpy2._tools import _estimates, data_of, specification_of
         norm = job['spec']
         res = restore(norm, job['data_csv'], job['fit_json'])
-        method = job['method']
-        if method == 'bootstrap':
-            b = pkpy2.bootstrap(res, n=int(job.get('n', 100)), seed=int(job.get('seed', 1)),
-                                fit_options=dict(integration=INTEGRATION, laplace_options=dict(scaled=True),
-                                                 refinement_options=dict(wall_budget_seconds=float(job.get('wall_seconds', 900.)))))
-            return dict(method='bootstrap', requested=b['requested'], converged=b['converged'],
-                        intervals=_interval_rows(b['summary']))
-        if method == 'sir':
-            unc = res.uncertainty_report or res.uncertainty()
-            s = pkpy2.sir(res, samples=int(job.get('samples', 1000)), resamples=int(job.get('resamples', 500)),
-                          iterations=int(job.get('iterations', 4)), covariance=np.asarray(unc['covariance']),
-                          seed=int(job.get('seed', 1)))
-            return dict(method='sir', effective_samples=float(s['effective_samples']), intervals=_interval_rows(s['summary']))
-        raise ValueError(f'unknown method {method}')
+        base, data = specification_of(res), data_of(res)
+        rng = np.random.default_rng(int(job['seed']))
+        rows = []
+        for _ in range(int(job['n'])):
+            if time.time() > float(job['deadline']):
+                break
+            sample = data.resample(rng)
+            try:
+                fitted = pkpy2.fit(sample, base, seed=int(rng.integers(1, 2 ** 31)), method='laplace',
+                                   integration=INTEGRATION, laplace_tolerance=float(job.get('laplace_tolerance', .5)),
+                                   laplace_options=dict(scaled=True, gradient='exact', starts=1, cpu_budget_seconds=1e9,
+                                                        wall_seconds=max(60., float(job['deadline']) - time.time())))
+                rows.append(dict(converged=bool(fitted.converged), estimates=_estimates(fitted)))
+            except (ValueError, RuntimeError, ArithmeticError) as e:
+                rows.append(dict(converged=False, error=f'{type(e).__name__}: {e}', estimates={}))
+        return dict(rows=rows, estimates=_estimates(res))
     except Exception as e:                                      # noqa: BLE001
         return dict(status='error', error=f'{type(e).__name__}: {e}', traceback=traceback.format_exc()[-2000:])
+
+
+def bootstrap_summary(chunks, requested):
+    """Median and 2.5-97.5% percentile interval of every estimate over the converged replicates of all chunks."""
+    rows = [r for c in chunks for r in c.get('rows', [])]
+    ok = [r for r in rows if r['converged']]
+    estimates = next((c['estimates'] for c in chunks if c.get('estimates')), {})
+    summary = []
+    for name, value in estimates.items():
+        vals = np.array([r['estimates'][name] for r in ok if name in r['estimates']], dtype=float)
+        if len(vals) < 2 or np.all(vals == value):                  # fixed quantities
+            continue
+        summary.append(dict(quantity=name, estimate=_r(value), median=_r(np.median(vals)),
+                            ci95=[_r(np.quantile(vals, .025)), _r(np.quantile(vals, .975))],
+                            se=_r(np.std(vals, ddof=1))))
+    return dict(method='bootstrap', requested=requested, completed=len(rows), converged=len(ok), intervals=summary)
 
 
 # ---------------------------------------------------------------------- summaries
@@ -455,17 +475,3 @@ def warnings(summary, norm):
         if worst > .75:
             w.append(f'{o}: binned mean CWRES reaches {worst:.2f} (trend against time or PRED)')
     return w
-
-
-def _interval_rows(summary):
-    rows = []
-    for q, v in summary.items():
-        if not isinstance(v, dict):
-            continue
-        iv = v.get('interval')
-        row = dict(quantity=q, estimate=_r(v['estimate']) if v.get('estimate') is not None else None)
-        if v.get('median') is not None:
-            row['median'] = _r(v['median'])
-        row['ci95'] = [_r(iv[0]), _r(iv[1])] if iv and None not in iv else None
-        rows.append(row)
-    return rows

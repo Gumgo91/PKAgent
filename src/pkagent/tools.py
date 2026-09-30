@@ -68,10 +68,12 @@ TOOLS = [
                    'against the 95% intervals of the simulated percentiles, per time bin and output.',
         dict(model_id=dict(type='string'), prediction_corrected=dict(type='boolean'), log_scale=dict(type='boolean'),
              bins=dict(type='integer')), ('model_id',)),
-    _fn('resample_uncertainty', 'Nonparametric bootstrap (refits on resampled subjects) or sampling importance '
-                                'resampling (SIR) for the uncertainty of a final model. Slow; use once at the end.',
-        dict(model_id=dict(type='string'), method=dict(type='string', enum=['bootstrap', 'sir']),
-             n=dict(type='integer', description='bootstrap replicates (default 100)')), ('model_id', 'method')),
+    _fn('resample_uncertainty', 'Nonparametric bootstrap of a final model: refits on resampled subjects, run in '
+                                'parallel with the settings of the model fits, stopped at a time limit (30 minutes, '
+                                'or the remaining time budget); reports the median and 2.5-97.5 percentile interval '
+                                'of every estimate over the converged replicates. Slow; use at most once, at the end.',
+        dict(model_id=dict(type='string'), method=dict(type='string', enum=['bootstrap']),
+             n=dict(type='integer', description='requested replicates (default 100, at most 200)')), ('model_id',)),
     _fn('finalize_model', 'Submit the final model and the written report. Ends the analysis.',
         dict(model_id=dict(type='string'),
              report=dict(type='object', properties=dict(
@@ -159,7 +161,8 @@ def execute(session, name, args):
                     images.append(session.out / 'models' / args['model_id'] / v['plot'].split('\\')[-1].split('/')[-1])
                     v['plot'] = images[-1].name
         elif name == 'resample_uncertainty':
-            out = session.resample(args['model_id'], args['method'], **({'n': int(args['n'])} if args.get('n') else {}))
+            out = session.resample(args['model_id'], args.get('method') or 'bootstrap',
+                                   **({'n': int(args['n'])} if args.get('n') else {}))
         elif name == 'finalize_model':
             rec = session.models.get(args['model_id'])
             if rec is None or rec['status'] != 'converged':
