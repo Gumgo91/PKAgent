@@ -41,11 +41,18 @@ def figure_recovery(runs):
     lowest to the highest ratio over subjects and a marker at the median, one row per run, one panel per dataset."""
     from matplotlib.ticker import FixedLocator, NullLocator
     names = [d for d in DATASETS if d in set(runs['dataset'])]
+    path = HERE / 'evaluation' / 'reference_fit_ratios.json'
+    reference = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+    order = dict(pheno=['CL', 'V'], remifentanil=['CL', 'V1', 'Q2', 'V2', 'Q3', 'V3'],
+                 oral_mm=['Ka', 'V', 'VMAX', 'KM'])
     fig, axes = plt.subplots(1, len(names), figsize=(4.4 * len(names), 5.2), squeeze=False)
     for ax, ds in zip(axes[0], names):
         sub = runs[runs['dataset'] == ds]
-        params = [c[len('ratio_'):-len('_median')] for c in sub.columns if c.startswith('ratio_') and
-                  c.endswith('_median') and sub[c].notna().any()]
+        params = [p for p in order.get(ds, []) if f'ratio_{p}_median' in sub and sub[f'ratio_{p}_median'].notna().any()]
+        for i, p in enumerate(params):
+            if p in reference.get(ds, {}):
+                v = reference[ds][p]['median']
+                ax.plot([v, v], [i - .42, i + .42], color='#1F2933', lw=1.6, zorder=4, solid_capstyle='butt')
         slots = [(c, m) for c in COND for m in LLM]
         for i, p in enumerate(params):
             k = 0
@@ -75,7 +82,9 @@ def figure_recovery(runs):
         ax.set_xlabel('typical value, final / reference model')
     handles = [plt.Line2D([], [], marker=MARK[m], color=COLOR[c], linestyle='-', label=f'{LLM[m]}, {COND[c].lower()}')
                for c in COND for m in LLM]
-    fig.legend(handles=handles, loc='lower center', ncol=4, frameon=False, bbox_to_anchor=(.5, -.05))
+    handles.append(plt.Line2D([], [], marker='|', markersize=12, markeredgewidth=1.6, color='#1F2933', linestyle='',
+                              label='PKPy2 fit of the reference model'))
+    fig.legend(handles=handles, loc='lower center', ncol=5, frameon=False, bbox_to_anchor=(.5, -.05), fontsize=8.5)
     _save(fig, 2)
 
 

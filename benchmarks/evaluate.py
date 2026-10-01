@@ -250,6 +250,26 @@ def evaluate_run(path, reference_fits):
     return row, dict(ratios=ratios, covariates=sorted(found), description=final['description'])
 
 
+def reference_fit_ratios(name):
+    """Typical values of the PKPy2 fit of the reference model divided by the published (or simulated) reference values:
+    median and range over subjects, per reference parameter (what the data and engine give for the reference model)."""
+    base = HERE / 'reference_fits' / name
+    if not (base / 'models' / 'M001' / 'summary.json').exists():
+        return {}
+    spec = json.loads((base / 'models' / 'M001' / 'spec.json').read_text(encoding='utf-8'))
+    summary = json.loads((base / 'models' / 'M001' / 'summary.json').read_text(encoding='utf-8'))
+    data_file = sorted((base / 'data').glob('data_v*.csv'))[-1]
+    subjects = pd.read_csv(data_file, na_values=['.']).groupby('ID').first().reset_index()
+    fit_tv, ref_tv = typical_values(spec, summary, subjects), reference_typical(name, subjects)
+    out = {}
+    for p, ref_values in ref_tv.items():
+        q = _match(p, fit_tv)
+        if q is not None:
+            r = fit_tv[q] / ref_values
+            out[p] = dict(median=float(np.median(r)), min=float(np.min(r)), max=float(np.max(r)))
+    return out
+
+
 def main():
     OUT.mkdir(exist_ok=True)
     reference_fits = {}
@@ -257,6 +277,8 @@ def main():
         p = HERE / 'reference_fits' / name / 'reference_fit.json'
         if p.exists():
             reference_fits[name] = json.loads(p.read_text(encoding='utf-8'))
+    (OUT / 'reference_fit_ratios.json').write_text(json.dumps({n: reference_fit_ratios(n) for n in DATASETS}, indent=1),
+                                                  encoding='utf-8')
     rows, details = [], {}
     for path in sorted((HERE / 'runs').glob('*/*/*/rep*/results.json')):
         row, detail = evaluate_run(path, reference_fits)
