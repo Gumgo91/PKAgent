@@ -18,7 +18,7 @@ FIG = HERE.parent / 'paper' / 'figures'
 DATASETS = json.loads((HERE / 'datasets.json').read_text(encoding='utf-8'))
 LABEL = dict(pheno='Phenobarbital', remifentanil='Remifentanil', oral_mm='Oral MM (simulated)')
 LLM = dict(gpt='GPT-6.1 Sol', claude='Claude Opus 5.5')
-COND = dict(none='No knowledge', knowledge='Expert sentence')
+COND = dict(none='No knowledge', knowledge='Expert statement')
 COLOR = dict(none='#8A94A6', knowledge='#C8801E')
 MARK = dict(gpt='o', claude='s')
 
@@ -138,7 +138,7 @@ def figure_covariates(runs):
                 color = 'white' if not forms else ('#1F2933' if REF_FORMS[ds][rel] in forms else '#9AA5B1')
                 ax.add_patch(Rectangle((j, i), .9, .9, facecolor=color, edgecolor='#52606D', lw=.6))
             extra = len([k for k in found if k not in REF_FORMS[ds]])
-            ax.text(j + .45, len(rels) + .45, str(extra) if extra else '', ha='center', va='center', fontsize=8,
+            ax.text(j + .45, len(rels) + .45, str(extra), ha='center', va='center', fontsize=8,
                     color='#B44D12')
         labels = []
         for p, c in rels:
@@ -152,7 +152,7 @@ def figure_covariates(runs):
         ncond = (sub['condition'] == 'none').sum()
         ax.axvline(ncond - .05, color='#C8801E', lw=1.0)
         ax.text(ncond / 2, -.45, 'No knowledge', ha='center')
-        ax.text(ncond + (len(sub) - ncond) / 2, -.45, 'Expert sentence', ha='center', color='#C8801E')
+        ax.text(ncond + (len(sub) - ncond) / 2, -.45, 'Expert statement', ha='center', color='#C8801E')
         ax.set_xlim(-.2, len(sub) + .1)
         ax.set_ylim(len(rels) + 1, -1)
         ax.set_title(LABEL.get(ds, ds), loc='left', pad=12)

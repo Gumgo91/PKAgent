@@ -60,6 +60,10 @@ def rest(spec):
     return json.dumps(s, sort_keys=True)
 
 
+def residual_kind(spec):
+    return {k: sorted(v) for k, v in (spec.get('residual') or {}).items()}
+
+
 def structure_label(spec):
     st = spec.get('structure', {})
     return (st.get('type', 'pk'), st.get('compartments', 1), bool(st.get('linear_clearance')))
@@ -78,7 +82,7 @@ def analyze(run_dir):
         if p.exists():
             models[m['model_id']] = dict(m, spec=json.loads(p.read_text(encoding='utf-8')))
     conv = {k: m for k, m in models.items() if m.get('status') == 'converged' and m.get('ofv') is not None}
-    tests, structural = [], []
+    tests, structural, compartment_tests = [], [], []
     for a, b in combinations(sorted(conv), 2):
         sa, sb = conv[a]['spec'], conv[b]['spec']
         ra, rb = relationships(sa, trans, cols, ref_names), relationships(sb, trans, cols, ref_names)
@@ -94,9 +98,23 @@ def analyze(run_dir):
                                   delta_ofv=round(conv[without_id]['ofv'] - conv[with_id]['ofv'], 3),
                                   n_relationships_with=len(ra if rel in ra else rb),
                                   iiv_blocks=bool(sa.get('iiv_blocks'))))
+        # compartment tests: same type of elimination, residual model and covariate relationships, no covariance
+        # blocks, different number of compartments (the added compartment may carry its own variances)
+        st_a, st_b = structure_label(sa), structure_label(sb)
+        small = sa if st_a[1] < st_b[1] else sb
+        kept = {to_reference_name(q, ref_names) for q in small.get('parameters', {})}
+        same_cov = {k: v for k, v in ra.items() if k[0] in kept} == {k: v for k, v in rb.items() if k[0] in kept}
+        if st_a[0] == st_b[0] and st_a[2] == st_b[2] and st_a[1] != st_b[1] and same_cov \
+                and not sa.get('iiv_blocks') and not sb.get('iiv_blocks') \
+                and residual_kind(sa) == residual_kind(sb):
+            lo_, hi_ = (a, b) if st_a[1] < st_b[1] else (b, a)
+            compartment_tests.append(dict(fewer=lo_, more=hi_, compartments=[min(st_a[1], st_b[1]), max(st_a[1], st_b[1])],
+                                          covariates=len(relationships(small, trans, cols, ref_names)),
+                                          delta_ofv=round(conv[lo_]['ofv'] - conv[hi_]['ofv'], 3),
+                                          extra_parameters=conv[hi_].get('n_estimated', 0) - conv[lo_].get('n_estimated', 0)))
         if not ra and not rb and not sa.get('iiv_blocks') and not sb.get('iiv_blocks') \
                 and structure_label(sa) != structure_label(sb) \
-                and json.dumps(sa.get('residual'), sort_keys=True) == json.dumps(sb.get('residual'), sort_keys=True) \
+                and residual_kind(sa) == residual_kind(sb) \
                 and len(sa.get('iiv', {})) == len(sb.get('iiv', {})):
             structural.append(dict(models=[a, b], structures=[list(structure_label(sa)), list(structure_label(sb))],
                                    ofv=[conv[a]['ofv'], conv[b]['ofv']]))
@@ -129,7 +147,7 @@ def analyze(run_dir):
             lab = '/'.join(map(str, structure_label(m['spec'])))
             best[lab] = min(best.get(lab, float('inf')), m['ofv'])
     return dict(dataset=ds, condition=parts[1], llm=parts[2], rep=parts[3], covariate_tests=tests,
-                best_ofv_by_structure=best,
+                best_ofv_by_structure=best, compartment_tests=compartment_tests,
                 structural_tests=structural, tool_calls=calls,
                 plotted_data='plot_data' in calls, ran_nca='run_nca' in calls,
                 screened_covariates='screen_covariates' in calls,

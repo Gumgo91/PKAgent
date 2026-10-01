@@ -20,7 +20,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT / 'src'))
 sys.path.insert(0, str(HERE))
-from build_cpt import add_inline, add_table, base_document, heading   # noqa: E402
+from build_cpt import TITLE, add_inline, add_table, base_document, heading   # noqa: E402
 from pkagent.config import Budget, Settings                           # noqa: E402
 from pkagent.prompts import SYSTEM, task                              # noqa: E402
 from pkagent.spec import SPEC_SCHEMA                                  # noqa: E402
@@ -31,7 +31,7 @@ BENCH = ROOT / 'benchmarks'
 DATASETS = json.loads((BENCH / 'datasets.json').read_text(encoding='utf-8'))
 LABEL = dict(pheno='Phenobarbital', remifentanil='Remifentanil', oral_mm='Oral MM (simulated)')
 LLM = dict(gpt='GPT-6.1 Sol', claude='Claude Opus 5.5')
-COND = dict(none='no knowledge', knowledge='expert sentence', misleading='misleading sentence')
+COND = dict(none='no knowledge', knowledge='expert statement', misleading='misleading statement')
 
 
 def single(p, size=None):
@@ -60,8 +60,7 @@ def new_doc(title):
     d = base_document()
     p = d.add_paragraph()
     add_inline(p, f'**{title}**')
-    text(d, '*Autonomous Population Pharmacokinetic Modeling by a Large Language Model Agent: Reproduction of '
-            'Reference Models With and Without Expert Knowledge*')
+    text(d, f'*{TITLE}*')
     return d
 
 
@@ -73,7 +72,7 @@ def s1():
     heading(d, 'S1.2 Task message', 3)
     text(d, 'The first user message of a run. The expert-knowledge section appears only in the expert-knowledge and '
             'misleading conditions; the budget lines show the settings of the benchmark.')
-    code(d, task('<dataset description>', '<expert sentence>', None, Budget()))
+    code(d, task('<dataset description>', '<expert statement>', None, Budget()))
     heading(d, 'S1.3 Tools', 3)
     rows = []
     for t in TOOLS:
@@ -93,9 +92,9 @@ def s1():
         v = DATASETS[name]
         text(d, f'**{LABEL[name]}**')
         text(d, '*Description given to the agent:* ' + v['description'])
-        text(d, '*Expert sentence (expert-knowledge condition):* ' + v['knowledge'])
+        text(d, '*Expert statement (expert-knowledge condition):* ' + v['knowledge'])
         if v.get('misleading_knowledge'):
-            text(d, '*Misleading sentence (misleading condition):* ' + v['misleading_knowledge'])
+            text(d, '*Misleading statement (misleading condition):* ' + v['misleading_knowledge'])
         d.add_paragraph()
     d.save(OUT / 'Supplementary_Material_S1.docx')
 
@@ -146,8 +145,10 @@ def s2():
                                                'errors; the phenobarbital weight exponents are fixed, so their OFV '
                                                'changes are descriptive'),
         ('Stepwise baseline', 'reference structure without covariates; forward inclusion at P < 0.05 and backward '
-                              'elimination at P < 0.01 over the reference relationships in reference form and '
-                              'plausible alternatives (Apgar on CL; age and LBM on every remifentanil parameter)'),
+                              'elimination at P < 0.01 over the reference form families (weight as a power function '
+                              'with estimated exponent, an indicator for Apgar score below 5, linear age and LBM '
+                              'effects) and plausible alternatives (Apgar on CL; age and LBM on every remifentanil '
+                              'parameter)'),
         ('Development', '16 pilot runs (10 completed) on the phenobarbital and remifentanil datasets under earlier tool '
                         'versions were discarded; the system prompt was not changed after the first pilot; the code '
                         'was frozen at PKAgent commit f5a4263 and PKPy2 0.2.1 before the benchmark; covariate recall, '
@@ -164,15 +165,18 @@ def s2():
             return '–' if pd.isna(x) else f'{x:.{digits}g}'
         rows.append([LABEL.get(r['dataset'], r['dataset']), r['quantity'], f(r['reference']), f(r['pkpy2'], 5),
                      f(r['ratio'], 3), f(r['rse_percent'], 3)])
-    add_table(d, '**Table S2.** Reference values (phenobarbital: FOCE-I estimates of the NONMEM example model, NONMEM '
-                 '7.4.2; remifentanil: Minto et al.; oral MM: nominal simulation values) and the PKPy2 fit of the same '
-                 'model to the benchmark data',
+    add_table(d, '**Table S2.** Reference values (phenobarbital: FOCE-I estimates of the NONMEM example model from a '
+                 'NONMEM 7.4.2 run distributed with the Pharmpy test data, pheno_real.mod and pheno_real.ext, '
+                 'https://github.com/pharmpy/pharmpy; remifentanil: Minto et al.; oral MM: nominal simulation values) '
+                 'and the PKPy2 fit of the same model to the benchmark data',
               ['Dataset', 'Quantity', 'Reference', 'PKPy2', 'Ratio', 'RSE (%)'], rows,
               'The NONMEM objective of the phenobarbital model (586.276) differs from the PKPy2 OFV by the constant '
               '155·ln(2π). Remifentanil slopes are absolute changes per year of age or per kg of LBM; the additive '
               'published model was fitted as a product of linear terms, and its variability model (exponential IIV on '
               'all six parameters, proportional error) is not from the publication; its fit had two optima 0.6 apart '
-              'and no standard errors. Oral MM: geometric means of the simulated individual values in the subset were '
+              'and no standard errors; its values are at age 40 years and LBM 55 kg, whereas the text gives medians over '
+              'subjects. Oral MM: exponential IIV on Ka, V, VMAX, and KM and proportional error, as in the simulation; '
+              'geometric means of the simulated individual values in the subset were '
               'Ka 0.98 1/h, V 67.2 L, VMAX 981 µg/h, KM 232 µg/L. IIV, interindividual variability; LBM, lean body '
               'mass; MM, Michaelis–Menten; OFV, objective function value; RSE, relative standard error (– when not '
               'available).', [1.2, 2.2, .9, .9, .6, .7], size=8.5)

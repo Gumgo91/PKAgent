@@ -41,9 +41,9 @@ def main():
     ax.set_xlim(0, 7.0)
     ax.set_ylim(0, 4.6)
     ax.axis('off')
-    box(ax, 0.05, 3.12, 2.15, 1.43, 'input', 'Analysis inputs',
-        ['data file (NONMEM format)', 'study description: design,', '  units, columns', 'optional expert knowledge',
-         '  (one sentence)', 'budgets: fits, turns, hours, cost'][:6])
+    box(ax, 0.05, 3.12, 2.15, 1.43, 'input', 'Task message',
+        ['study description: design,', '  units, columns', 'optional expert statement', '  (one or two sentences)',
+         'limits: fits, responses, hours'])
     box(ax, 0.05, 1.55, 2.15, 1.30, 'llm', 'Language model',
         ['GPT-6.1 Sol or Claude Opus 5.5', 'system prompt: workflow,', '  decision criteria, conventions',
          'reads tool results and plots', 'never writes or runs code'])
@@ -51,14 +51,14 @@ def main():
         ['final model and structured report', 'every model: specification, fit,', '  diagnostics, plots',
          'transcript and tool log', 'tokens, cost, time'])
     box(ax, 2.80, 0.05, 2.25, 4.50, 'session', 'PKAgent session (14 tools)',
-        ['**Data', 'describe_data, plot_data,', 'run_nca, add_data_column', '**Models',
-         'fit_models (≤ 6 validated JSON', '  specifications in parallel),', 'list_models, get_model,',
+        ['**Data (file loaded by the session)', 'describe_data, plot_data,', 'run_nca, add_data_column', '**Models',
+         'fit_models (≤ 6 validated JSON', '  specifications per call),', 'list_models, get_model,',
          'compare_models', '**Diagnostics', 'view_plots, screen_covariates,', 'run_vpc',
-         '**Covariates and uncertainty', 'covariate_search,', 'resample_uncertainty', '**Report', 'finalize_model',
-         '', 'versioned data, model registry,', 'budgets, audit trail'])
+         '**Covariates and uncertainty', 'covariate_search (SCM),', 'resample_uncertainty (bootstrap)', '**Report',
+         'finalize_model', 'versioned data, model registry,', 'budgets incl. fee limit, audit trail'])
     box(ax, 5.38, 2.40, 1.57, 2.15, 'engine', 'PKPy2 engine',
         ['event-record models', 'Laplace (FOCE-I type)', '  objective, L-BFGS-B', 'conditional-mode', '  search',
-         'SEs, CWRES, NPDE,', '  VPC, bootstrap', 'SCM'])
+         'SEs, CWRES, NPDE,', '  VPC simulation'])
     arrow(ax, (1.12, 3.10), (1.12, 2.88), 'task', dx=0.08, dy=-0.07, ha='left')
     arrow(ax, (2.24, 2.42), (2.76, 2.42), 'calls', dy=0.04)
     arrow(ax, (2.76, 2.02), (2.24, 2.02), 'results,', dy=0.04)

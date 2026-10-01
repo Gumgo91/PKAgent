@@ -2,7 +2,7 @@
 
 Input: paper/manuscript_cpt.md (body), paper/build/numbers.json and table2.json (python paper/manuscript_numbers.py),
 paper/misleading_text.json (prose about the misleading-sentence runs, once they exist), benchmarks/datasets.json
-(expert sentences of Table 1), paper/figures/Figure_<n>.pdf.
+(expert statements of Table 1), paper/figures/Figure_<n>.pdf.
 Output: paper/submission_cpt/ with the manuscript (DOCX: title page, abstract, text, study highlights, statements,
 references, tables, figure legends), the figures as separate files, and the cover letter.
 
@@ -362,9 +362,9 @@ def main():
 
     # tables (landscape, one per page)
     landscape_section(d)
-    add_table(d, '**Table 1.** Benchmark datasets, reference models, and the expert sentence of the expert-knowledge '
+    add_table(d, '**Table 1.** Benchmark datasets, reference models, and the expert statement of the expert-knowledge '
                  'condition',
-              ['Dataset', 'Design', 'Reference model', 'Expert sentence'], table1_rows(),
+              ['Dataset', 'Design', 'Reference model', 'Expert statement'], table1_rows(),
               'CL, clearance; IIV, interindividual variability; IV, intravenous; Ka, absorption rate constant; KM, '
               'Michaelis constant; LBM, lean body mass; MM, Michaelis–Menten; Q2 and Q3, intercompartmental '
               'clearances; V, V1, V2, V3, volumes of distribution; VMAX, maximum elimination rate.',
