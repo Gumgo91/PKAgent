@@ -128,9 +128,8 @@ def checks():
                         and ofv[a]['n_estimated'] == ofv[b]['n_estimated']:
                     pairs.append(round(ofv[a]['ofv'] - ofv[b]['ofv'], 1))
     check('one direct linear vs exponential comparison, 9.1 in favor of exponential', pairs == [9.1], pairs)
-    check('Claude never plotted the raw data and fitted nothing after viewing plots',
-          numbers.get('claude_plot_data', '').startswith('none') and
-          numbers.get('claude_fitted_after_plots', '').startswith('none'))
+    check('Claude plotted the raw data in the same runs in which it fitted after viewing plots',
+          numbers.get('claude_plot_data') == numbers.get('claude_fitted_after_plots'))
     check('GPT plotted the data and screened covariates in every run',
           numbers.get('gpt_plot_data', '').startswith('all') and numbers.get('gpt_screen', '').startswith('all'))
     check('runs near the time limit are GPT remifentanil runs only',
