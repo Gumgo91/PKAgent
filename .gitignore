@@ -50,3 +50,6 @@ benchmarks/runs_prelim/
 benchmarks/evaluation/
 benchmarks/reference_fits/
 paper/build/
+
+# CPT submission build outputs
+paper/submission_cpt/

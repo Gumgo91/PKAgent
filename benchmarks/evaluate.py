@@ -106,15 +106,23 @@ REFERENCE_FORMS = {            # functional form of each reference relationship 
 }
 
 
+def relationship_forms(spec, transformations, base_columns, reference_names):
+    """{(reference parameter, source covariate): set of functional forms} of the final model."""
+    found = {}
+    for c in spec['covariates']:
+        if c['coefficient'].get('fixed') and c['coefficient']['value'] == 0:
+            continue
+        for src in _sources(c['covariate'], transformations, base_columns):
+            found.setdefault((to_reference_name(c['parameter'], reference_names), src), set()).add(c['form'])
+    return found
+
+
 def form_agreement(spec, transformations, base_columns, reference_names, name):
     """Fraction of the reference relationships present in the final model with the reference functional form."""
     forms = REFERENCE_FORMS[name]
     if not forms:
         return None
-    found = {}
-    for c in spec['covariates']:
-        for src in _sources(c['covariate'], transformations, base_columns):
-            found.setdefault((to_reference_name(c['parameter'], reference_names), src), set()).add(c['form'])
+    found = relationship_forms(spec, transformations, base_columns, reference_names)
     return sum(1 for k, f in forms.items() if f in found.get(k, set())) / len(forms)
 
 
@@ -151,24 +159,15 @@ def covariate_relationships(spec, transformations, base_columns, reference_names
     return rel
 
 
-RECALL_TERMS = ('classic', 'well-known', 'well known', 'textbook', 'nonmem example', 'published', 'literature',
-                'grasela', 'donn', 'minto', 'schoemaker', 'acop', 'nlmixr', 'nlme')
-
-
 def recall_mentions(run_dir):
     """LLM statements that refer to prior knowledge of the dataset or its published analysis (memorization check):
-    the matched terms and the turns that contain them, from the assistant messages of the transcript."""
+    the matched terms and the turns that contain them (benchmarks/recall.py: assistant text, tool-call arguments
+    and reasoning summaries)."""
+    from recall import recalled
     hits = {}
-    path = run_dir / 'transcript.jsonl'
-    if not path.exists():
-        return hits
-    for line in path.read_text(encoding='utf-8').splitlines():
-        turn = json.loads(line)
-        text = ' '.join(filter(None, [turn.get('content') or '', json.dumps(turn.get('tool_calls') or '')])).lower()
-        for term in RECALL_TERMS:
-            if term in text:
-                hits.setdefault(term, []).append(turn['turn'])
-    return hits
+    for h in recalled(run_dir):
+        hits.setdefault(h['term'].lower(), []).append(h['turn'])
+    return {k: sorted(set(v)) for k, v in hits.items()}
 
 
 def misleading_followed(name, spec, found, row):
@@ -265,7 +264,9 @@ def evaluate_run(path, reference_fits):
     row['cwres_mean'], row['cwres_sd'] = first.get('cwres_mean'), first.get('cwres_sd')
     shrink = (s.get('diagnostics') or {}).get('eta_shrinkage_percent') or {}
     row['max_eta_shrinkage'] = max((v for v in shrink.values() if v is not None), default=None)
-    return row, dict(ratios=ratios, covariates=sorted(found), description=final['description'])
+    forms = relationship_forms(spec, transformations, base_columns, set(ref_tv))
+    return row, dict(ratios=ratios, covariates=sorted(found), description=final['description'],
+                     relationships=[[p, c, sorted(f)] for (p, c), f in sorted(forms.items())])
 
 
 def reference_fit_ratios(name):

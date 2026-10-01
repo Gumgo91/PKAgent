@@ -1,0 +1,418 @@
+"""Numbers for the manuscript, computed from the benchmark evaluation (benchmarks/evaluation/) and the run folders.
+
+Writes paper/build/numbers.json (values used as {{key}} in the manuscript), paper/build/table2.json (rows of the
+run-outcome table), paper/build/recall.json and paper/build/run_profiles.json (Supplementary Material S3).
+Run benchmarks/evaluate.py, benchmarks/agent_tests.py (and effect_evidence.py, scm_baseline.py) first.
+"""
+import datetime as dt
+import json
+import math
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+HERE = Path(__file__).resolve().parent
+BENCH = HERE.parent / 'benchmarks'
+EVAL = BENCH / 'evaluation'
+BUILD = HERE / 'build'
+sys.path.insert(0, str(BENCH))
+from recall import recalled                                         # noqa: E402
+from evaluate import reference_typical, typical_values, _match     # noqa: E402
+
+DATASETS = json.loads((BENCH / 'datasets.json').read_text(encoding='utf-8'))
+REFERENCE = {
+    'pheno': {('CL', 'WT'): 'power', ('V', 'WT'): 'power', ('V', 'APGR'): 'categorical'},
+    'remifentanil': {(p, c): 'linear' for p, c in (('V1', 'AGE'), ('V1', 'LBM'), ('V2', 'AGE'), ('V2', 'LBM'),
+                                                   ('CL', 'AGE'), ('CL', 'LBM'), ('Q2', 'AGE'), ('Q3', 'AGE'))},
+    'oral_mm': {},
+}
+LABEL = dict(pheno='Phenobarbital', remifentanil='Remifentanil', oral_mm='Oral MM (simulated)')
+COND = dict(none='No knowledge', knowledge='Expert sentence', misleading='Misleading sentence')
+LLM = dict(gpt='GPT-6.1 Sol', claude='Claude Opus 5.5')
+WORDS = {0: 'no', 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven', 8: 'eight',
+         9: 'nine', 10: 'ten', 11: 'eleven', 12: 'twelve'}
+TIMES = {1: 'once', 2: 'twice', 3: 'three times'}
+
+
+def fmt(x, digits=1):
+    if x is None or (isinstance(x, float) and np.isnan(x)):
+        return 'NA'
+    return f'{x:,.{digits}f}'.replace('-', '−')                # typographic minus sign
+
+
+def med_range(v, digits=1):
+    v = pd.Series(v).dropna()
+    if v.empty:
+        return 'NA'
+    if len(v) == 1:
+        return fmt(v.iloc[0], digits)
+    if len(v) == 2:                                             # two values: list them rather than a median
+        a, b = sorted(v)
+        return f'{fmt(a, digits)} and {fmt(b, digits)}'
+    return f'{fmt(v.median(), digits)} ({fmt(v.min(), digits)} to {fmt(v.max(), digits)})'
+
+
+def span(v, digits=1):
+    """'a to b' (or 'a' when all values are equal)."""
+    v = [x for x in v if x is not None]
+    if not v:
+        return 'NA'
+    a, b = fmt(min(v), digits), fmt(max(v), digits)
+    return a if a == b else f'{a} to {b}'
+
+
+def word(k):
+    return WORDS.get(k, str(k))
+
+
+def of_runs(k, total):
+    """'both runs', 'all four runs', 'three of four runs', 'neither run', 'none of the four runs', 'one run'."""
+    if total == 1:
+        return 'the run' if k == 1 else 'not the run'
+    if total == 2:
+        return {2: 'both runs', 1: 'one of the two runs', 0: 'neither run'}[k]
+    if k == total:
+        return f'all {word(total)} runs'
+    if k == 0:
+        return f'none of the {word(total)} runs'
+    return f'{word(k)} of {word(total)} runs'
+
+
+def run_dir(r):
+    return BENCH / 'runs' / r['dataset'] / r['condition'] / r['llm'] / r['rep']
+
+
+def relationships(details, row):
+    key = next((k for k in details if k.replace('\\', '/') == f"{row['dataset']}/{row['condition']}/{row['llm']}/{row['rep']}"),
+               None)
+    return {(p, c): set(f) for p, c, f in (details.get(key) or {}).get('relationships', [])}
+
+
+def subjects_of(path):
+    data = sorted((path / 'data').glob('data_v*.csv'))
+    return pd.read_csv(data[-1], na_values=['.']).groupby('ID').first().reset_index()
+
+
+def subgroup_ratio(r, param, mask_fn):
+    """Median ratio (final / reference typical value) of a parameter in a subgroup of subjects."""
+    path = run_dir(r)
+    res = json.loads((path / 'results.json').read_text(encoding='utf-8'))
+    fm = res['final_model']
+    subjects = subjects_of(path)
+    tv = typical_values(fm['specification'], fm['summary'], subjects)
+    ref = reference_typical(r['dataset'], subjects)
+    q = _match(param, tv)
+    if q is None:
+        return None
+    mask = mask_fn(subjects).to_numpy()
+    return float(np.median(tv[q][mask] / ref[param][mask]))
+
+
+def main():
+    BUILD.mkdir(exist_ok=True)
+    ev = json.loads((EVAL / 'evaluation.json').read_text(encoding='utf-8'))
+    runs = pd.DataFrame(ev['runs'])
+    details = ev['details']
+    evidence = json.loads((EVAL / 'effect_evidence.json').read_text(encoding='utf-8')) \
+        if (EVAL / 'effect_evidence.json').exists() else {}
+    ratios = json.loads((EVAL / 'reference_fit_ratios.json').read_text(encoding='utf-8'))
+    tests = json.loads((EVAL / 'agent_tests.json').read_text(encoding='utf-8'))
+    tests = {(t['dataset'], t['condition'], t['llm'], t['rep']): t for t in tests}
+
+    rel = [relationships(details, r) for _, r in runs.iterrows()]
+    runs['n_ref'] = [len(REFERENCE[d]) for d in runs['dataset']]
+    runs['n_found'] = [sum(k in f for k in REFERENCE[d]) for d, f in zip(runs['dataset'], rel)]
+    runs['n_form'] = [sum(REFERENCE[d][k] in f.get(k, ()) for k in REFERENCE[d]) for d, f in zip(runs['dataset'], rel)]
+    runs['n_extra'] = [sum(k not in REFERENCE[d] for k in f) for d, f in zip(runs['dataset'], rel)]
+    n = {}
+
+    # ------------------------------------------------------------------ Table 2: one row per dataset and condition
+    rows = []
+    for ds in LABEL:
+        for cond in COND:
+            g = runs[(runs['dataset'] == ds) & (runs['condition'] == cond)]
+            if g.empty:
+                continue
+            within = g['all_within_20pct'].fillna(False).astype(bool)
+            row = dict(dataset=LABEL[ds], condition=COND[cond], runs=f"{len(g)} ({(g['llm'] == 'gpt').sum()}/"
+                                                                       f"{(g['llm'] == 'claude').sum()})",
+                       structure=f"{int(g['structure_match'].sum())}/{len(g)}")
+            if REFERENCE[ds]:
+                row['relationships'] = f"{int(g['n_found'].sum())}/{int(g['n_ref'].sum())}"
+                row['forms'] = f"{int(g['n_form'].sum())}/{int(g['n_ref'].sum())}"
+            else:
+                row['relationships'] = row['forms'] = 'NA'
+            row['extra'] = med_range(g['n_extra'], 0)
+            row['typical'] = f'{int(within.sum())}/{len(g)}'
+            row['reproduced'] = f"{int(g['reproduced'].fillna(False).astype(bool).sum())}/{len(g)}"
+            row['delta_ofv'] = med_range(g['delta_ofv_vs_reference'], 1)
+            row['delta_aic'] = med_range(g['delta_aic_vs_reference'], 1)
+            row['fits'] = med_range(g['fits'], 0)
+            row['hours'] = med_range(g['hours'], 1)
+            row['cost'] = med_range(g['cost_usd'], 2)
+            if cond == 'misleading':
+                row['misleading'] = '; '.join(f'{k}: {v}' for k, v in g['misleading_followed'].value_counts().items())
+            rows.append(row)
+    (BUILD / 'table2.json').write_text(json.dumps(rows, indent=1), encoding='utf-8')
+
+    # ------------------------------------------------------------------ design and process
+    main_grid = runs[runs['condition'].isin(['none', 'knowledge'])]
+    cells = main_grid.groupby(['dataset', 'condition', 'llm']).size()
+    lo, hi = (int(cells.min()), int(cells.max())) if len(cells) else (0, 0)
+    n['n_runs'] = len(main_grid)
+    n['n_runs_all'] = len(runs)
+    n['reps_times'] = TIMES.get(lo, f'{lo} times') if lo == hi else f'{word(lo)} to {word(hi)} times' if hi - lo > 1 \
+        else f'{TIMES.get(lo)} or {TIMES.get(hi)}'
+    n['reps_phrase'] = (f'{word(lo)} replicate{"s" if lo > 1 else ""} per combination' if lo == hi else
+                        f'{word(lo)} or {word(hi)} replicates per combination' if hi - lo == 1 else
+                        f'{word(lo)} to {word(hi)} replicates per combination')
+    n['reps_abstract'] = (f'in {word(lo)} replicate{"s" if lo > 1 else ""}' if lo == hi else
+                          f'in {word(lo)} to {word(hi)} replicates')
+    n['grid_complete'] = 'yes' if lo == hi == 3 else 'no'
+    n['n_finalized'] = int(runs['finalized'].sum())
+    n['cost_total'] = fmt(runs['cost_usd'].sum(), 2)
+    n['cost_median'] = fmt(runs['cost_usd'].median(), 2)
+    n['hours_median'] = fmt(runs['hours'].median(), 1)
+    n['fits_median'] = fmt(runs['fits'].median(), 0)
+    n['fits_range'] = f"{int(runs['fits'].min())} to {int(runs['fits'].max())}"
+    n['llm_calls_median'] = fmt(runs['llm_calls'].median(), 0)
+    n['structure_all'] = f"{int(main_grid['structure_match'].sum())} of {len(main_grid)}"
+    n['reproduced_all'] = f"{int(main_grid['reproduced'].fillna(False).astype(bool).sum())} of {len(main_grid)}"
+    for ds in LABEL:
+        g = runs[runs['dataset'] == ds]
+        n[f'{ds}_hours_span'] = span(g['hours'], 1)
+        n[f'{ds}_cost_span'] = span(g['cost_usd'], 2)
+        n[f'{ds}_fits_span'] = span(g['fits'], 0)
+    for ds in LABEL:
+        for cond in ('none', 'knowledge', 'misleading'):
+            g = runs[(runs['dataset'] == ds) & (runs['condition'] == cond)]
+            if g.empty:
+                continue
+            k = f'{ds}_{cond}'
+            n[f'{k}_runs'] = len(g)
+            n[f'{k}_runs_word'] = word(len(g))
+            n[f'{k}_all'] = of_runs(len(g), len(g))
+            n[f'{k}_structure'] = of_runs(int(g['structure_match'].sum()), len(g))
+            n[f'{k}_hours'] = med_range(g['hours'], 1)
+            n[f'{k}_fits'] = med_range(g['fits'], 0)
+            n[f'{k}_cost'] = med_range(g['cost_usd'], 2)
+            n[f'{k}_dofv'] = med_range(g['delta_ofv_vs_reference'], 1)
+            n[f'{k}_dofv_span'] = span(g['delta_ofv_vs_reference'], 0)
+            n[f'{k}_reproduced'] = of_runs(int(g['reproduced'].fillna(False).astype(bool).sum()), len(g))
+            sub = [f for f, (_, r) in zip(rel, runs.iterrows()) if r['dataset'] == ds and r['condition'] == cond]
+            for (p, c), form in REFERENCE[ds].items():
+                n[f'{k}_{p}_{c}'] = of_runs(sum((p, c) in f for f in sub), len(sub))
+                n[f'{k}_{p}_{c}_form'] = of_runs(sum(form in f.get((p, c), ()) for f in sub), len(sub))
+            n[f'{k}_all_ref'] = of_runs(sum(all(r in f for r in REFERENCE[ds]) for f in sub), len(sub))
+            n[f'{k}_all_forms'] = of_runs(sum(all(REFERENCE[ds][r] in f.get(r, ()) for r in REFERENCE[ds])
+                                              for f in sub), len(sub))
+            n[f'{k}_mm'] = of_runs(int((g['elimination'] == 'Michaelis-Menten').sum()), len(g))
+            for col in ('KM', 'Ka', 'V', 'VMAX', 'V1', 'V3', 'Q3'):
+                if f'ratio_{col}_median' in g and g[f'ratio_{col}_median'].notna().any():
+                    n[f'{k}_{col}_ratio_span'] = span(g[f'ratio_{col}_median'], 2)
+            if cond == 'misleading':
+                for claim in ('no weight effect', 'Apgar on CL', 'linear elimination', 'two compartments'):
+                    n[f'{k}_{claim.replace(" ", "_")}'] = of_runs(
+                        int(g['misleading_followed'].fillna('').str.contains(claim).sum()), len(g))
+            if ds == 'remifentanil':
+                n[f'{k}_V3_AGE'] = of_runs(sum(('V3', 'AGE') in f for f in sub), len(sub))
+                for llm in LLM:
+                    sl = [f for f, (_, r) in zip(rel, runs.iterrows())
+                          if r['dataset'] == ds and r['condition'] == cond and r['llm'] == llm]
+                    n[f'{k}_V3_AGE_{llm}'] = of_runs(sum(('V3', 'AGE') in f for f in sl), len(sl))
+                n[f'{k}_V3_ratio'] = med_range(g['ratio_V3_median'], 2)
+                n[f'{k}_subject_span'] = span([v for c in ('V1', 'V2', 'CL', 'Q2', 'Q3')
+                                               for rr in g[f'ratio_{c}_range'].dropna()
+                                               for v in map(float, str(rr).split('-', 1))], 2)
+
+    # ------------------------------------------------------------------ the agents' own tests (agent_tests.py)
+    def agent_test_values(ds, cond, relname, forms=None, llm=None, context=False):
+        """Per run: the largest evidence (ΔOFV) the agent obtained for a relationship (optionally only in the final
+        model's covariate context, or only for some functional forms)."""
+        out = []
+        for key, t in tests.items():
+            if key[0] != ds or key[1] != cond or (llm and key[2] != llm):
+                continue
+            v = [x['delta_ofv'] for x in t['covariate_tests'] if x['relationship'] == relname
+                 and (forms is None or x['form'] in forms) and (not context or x.get('final_context'))
+                 and (context != 'final' or x.get('final_stochastic'))]
+            if v:
+                out.append(max(v))
+        return out
+    for ds, cond, relname, forms, tag in [
+            ('pheno', 'none', 'V~APGR', ('categorical',), 'pheno_none_apgar_indicator'),
+            ('pheno', 'none', 'V~APGR', None, 'pheno_none_apgar_any'),
+            ('pheno', 'knowledge', 'V~APGR', ('categorical',), 'pheno_knowledge_apgar'),
+            ('remifentanil', 'none', 'V1~AGE', None, 'remi_none_v1age'),
+            ('remifentanil', 'knowledge', 'V1~AGE', None, 'remi_knowledge_v1age'),
+            ('remifentanil', 'knowledge', 'V3~AGE', None, 'remi_knowledge_v3age'),
+            ('remifentanil', 'none', 'V3~AGE', None, 'remi_none_v3age')]:
+        for llm in (None, 'gpt', 'claude'):
+            v = agent_test_values(ds, cond, relname, forms, llm)
+            suffix = f'_{llm}' if llm else ''
+            n[f't_{tag}{suffix}'] = span(v, 1)
+            n[f't_{tag}{suffix}_runs'] = len(v)
+            n[f't_{tag}{suffix}_below_inclusion'] = sum(x < 3.84 for x in v)
+            n[f't_{tag}{suffix}_below_retention'] = sum(x < 6.63 for x in v)
+    # the Apgar indicator in the covariate context of the final model (Claude Opus 5.5: with a CL-V correlation)
+    for llm in (None, 'gpt', 'claude'):
+        v = agent_test_values('pheno', 'none', 'V~APGR', ('categorical',), llm, context='final')
+        n['t_pheno_none_apgar_final' + (f'_{llm}' if llm else '')] = span(v, 1)
+    # linear vs Michaelis-Menten (like-for-like pairs) and two vs three compartments (best base models)
+    mm = [abs(x['ofv'][0] - x['ofv'][1]) for key, t in tests.items() if key[0] == 'oral_mm'
+          for x in t['structural_tests']
+          if {x['structures'][0][0], x['structures'][1][0]} == {'pk', 'michaelis_menten'}
+          and x['structures'][0][1] == x['structures'][1][1] == 1 and not any(s[2] for s in x['structures'])]
+    n['mm_vs_linear'] = span(mm, 0)
+    three = [t['best_ofv_by_structure']['pk/2/False'] - t['best_ofv_by_structure']['pk/3/False']
+             for key, t in tests.items() if key[0] == 'remifentanil'
+             and {'pk/2/False', 'pk/3/False'} <= set(t['best_ofv_by_structure'])]
+    n['remi_3v2'] = span(three, 0)
+    n['remi_3v2_min'] = fmt(min(three), 0) if three else 'NA'
+    # tool use, time budget, bootstrap, fits
+    prof = []
+    for key, t in tests.items():
+        boots = t['bootstraps']
+        prof.append(dict(dataset=key[0], condition=key[1], llm=key[2], rep=key[3],
+                         plot_data=t['plotted_data'], run_nca=t['ran_nca'], screen_covariates=t['screened_covariates'],
+                         fitted_after_plots=t['fitted_after_viewing_plots'], hours_left=t['hours_left'],
+                         bootstrap=', '.join(f"{b['converged']}/{b['requested']}" for b in boots) or '–',
+                         fits=t['fits_total'], converged=t['fits_converged'],
+                         final_se=t['final_uncertainty']))
+    prof = pd.DataFrame(prof)
+    (BUILD / 'run_profiles.json').write_text(prof.to_json(orient='records', indent=1), encoding='utf-8')
+    for llm in LLM:
+        p = prof[prof['llm'] == llm]
+        n[f'{llm}_runs'] = len(p)
+        n[f'{llm}_fitted_after_plots'] = of_runs(int(p['fitted_after_plots'].sum()), len(p))
+        n[f'{llm}_plot_data'] = of_runs(int(p['plot_data'].sum()), len(p))
+        n[f'{llm}_screen'] = of_runs(int(p['screen_covariates'].sum()), len(p))
+    n['fits_total'] = f"{int(prof['fits'].sum()):,}"
+    n['fits_converged'] = f"{int(prof['converged'].sum()):,}"
+    n['final_se_missing'] = word(int((prof['final_se'] != 'computed').sum()))
+    late = prof[prof['hours_left'].astype(float) < 1]
+    n['runs_near_time_limit'] = word(len(late))
+    n['runs_near_time_limit_desc'] = ', '.join(f"{LLM[r['llm']]} {LABEL[r['dataset']].lower()} "
+                                                f"({'no knowledge' if r['condition'] == 'none' else r['condition']})"
+                                                for _, r in late.iterrows()) or 'none'
+    boot_runs = [b for b in prof['bootstrap'] if b != '–']
+    n['bootstrap_runs'] = word(len(boot_runs))
+    remi_boot = [b for b, ds in zip(prof['bootstrap'], prof['dataset']) if ds == 'remifentanil' and b != '–']
+    n['bootstrap_remi'] = ' and '.join(remi_boot) or 'none'
+    secs = [json.loads(p.read_text(encoding='utf-8')).get('seconds') or 0
+            for p in (BENCH / 'runs').glob('*/*/*/rep*/models/*/summary.json')]
+    n['max_fit_minutes'] = fmt(max(secs) / 60, 0) if secs else 'NA'
+    finish = [json.loads(line).get('finish_reason') for p in (BENCH / 'runs').glob('*/*/*/rep*/transcript.jsonl')
+              for line in p.read_text(encoding='utf-8').splitlines()]
+    n['llm_responses_total'] = f'{len(finish):,}'
+    n['llm_responses_truncated'] = word(sum(f == 'length' for f in finish))
+    # diagnostics of the final models
+    for ds in LABEL:
+        g = runs[runs['dataset'] == ds]
+        n[f'{ds}_vpc_span'] = span(g['vpc_inside_fraction'] * 100, 0)
+        misses = []
+        for _, r in g.iterrows():
+            res = json.loads((run_dir(r) / 'results.json').read_text(encoding='utf-8'))
+            vpc = ((res['final_model'].get('vpc') or {}).get('result') or {})
+            for out in vpc.values():
+                for b in (out or {}).get('bins', []):
+                    misses += [(b['time'], q) for q in ('p5', 'p50', 'p95') if not b[q]['inside']]
+        n[f'{ds}_vpc_miss_times'] = span([t for t, _ in misses], 0)
+        n[f'{ds}_vpc_miss_upper'] = f"{sum(q == 'p95' for _, q in misses)} of {len(misses)}"
+
+    # phenobarbital weight exponents without knowledge, and identical reference relationships within cells
+    for llm in LLM:
+        fixed, est = [], []
+        for _, r in runs[(runs['dataset'] == 'pheno') & (runs['condition'] == 'none') & (runs['llm'] == llm)].iterrows():
+            spec = json.loads((run_dir(r) / 'results.json').read_text(encoding='utf-8'))['final_model']['specification']
+            for c in spec['covariates']:
+                if c['covariate'] == 'WT':
+                    (fixed if c['coefficient']['fixed'] else est).append(c['coefficient']['value'])
+        n[f'pheno_none_wt_{llm}'] = ('fixed at 1' if fixed and not est and set(fixed) == {1.0} else
+                                     f'estimated at {span(est, 2)}' if est and not fixed else 'fixed or estimated')
+    same = True
+    for (ds, cond), g in runs[runs['condition'].isin(['none', 'knowledge'])].groupby(['dataset', 'condition']):
+        sets = {frozenset(k for k in f if k in REFERENCE[ds])
+                for f, (_, r) in zip(rel, runs.iterrows()) if r['dataset'] == ds and r['condition'] == cond}
+        same &= len(sets) == 1
+    if same:
+        n['same_reference_sets'] = 'yes'
+
+    # ------------------------------------------------------------------ subgroups and clinical meaning
+    def sub_span(ds, cond, param, mask_fn):
+        v = [subgroup_ratio(r, param, mask_fn) for _, r in runs.iterrows() if r['dataset'] == ds and r['condition'] == cond]
+        return span([x for x in v if x is not None], 2)
+    n['pheno_none_V_lowapgar'] = sub_span('pheno', 'none', 'V', lambda s: s['APGR'] < 5)
+    n['pheno_n_lowapgar'] = int((subjects_of(BENCH / 'reference_fits' / 'pheno')['APGR'] < 5).sum())
+    n['remi_none_V1_elderly'] = sub_span('remifentanil', 'none', 'V1', lambda s: s['AGE'] >= 65)
+    n['remi_knowledge_V3_elderly'] = sub_span('remifentanil', 'knowledge', 'V3', lambda s: s['AGE'] >= 65)
+    n['remi_n_elderly'] = int((subjects_of(BENCH / 'reference_fits' / 'remifentanil')['AGE'] >= 65).sum())
+    est = DATASETS['pheno']['reference']['estimates']
+    v_kg = est['V_per_kg']
+    n['apgar_conc_high'] = fmt(20 / v_kg, 1)
+    n['apgar_conc_low'] = fmt(20 / (v_kg * (1 + est['APGR_LT5_fractional_increase_in_V'])), 1)
+    n['apgar_effect_pct'] = fmt(est['APGR_LT5_fractional_increase_in_V'] * 100, 0)
+    # oral MM: the Michaelis constant against the nominal and the realized (subset) value
+    km_real = 232.
+    g = runs[runs['dataset'] == 'oral_mm']
+    n['km_realized_span'] = span(g['ratio_KM_median'] * 250 / km_real, 2)
+    n['reffit_km_realized'] = fmt(ratios['oral_mm']['KM']['median'] * 250 / km_real, 2)
+
+    # ------------------------------------------------------------------ reference fits and drop-one evidence
+    for ds, d in evidence.items():
+        rem = [r for r in d.get('removals', []) if r.get('delta_ofv') is not None]
+        for r in rem:
+            n[f"evidence_{ds}_{r['effect'].split('_')[0]}"] = fmt(r['delta_ofv'], 1)
+        if rem:
+            n[f'evidence_{ds}_min'] = fmt(min(r['delta_ofv'] for r in rem), 1)
+            n[f'evidence_{ds}_max'] = fmt(max(r['delta_ofv'] for r in rem), 1)
+            others = [r['delta_ofv'] for r in rem if r['effect'].split('_')[0] not in ('V1~AGE', 'V~APGR')]
+            n[f'evidence_{ds}_others_min'] = fmt(min(others), 1) if others else 'NA'
+    for ds, d in ratios.items():
+        for p, r in d.items():
+            n[f'reffit_{ds}_{p}'] = fmt(r['median'], 2)
+            n[f'reffit_{ds}_{p}_pct'] = f"{abs(1 - r['median']) * 100:.0f}"
+
+    # ------------------------------------------------------------------ deterministic stepwise baseline
+    scm_path = EVAL / 'scm_baseline.json'
+    scm = json.loads(scm_path.read_text(encoding='utf-8')) if scm_path.exists() else {}
+    for ds, d in scm.items():
+        def short(label):                     # 'V~APGR_LT5=1(categorical)' -> 'V–APGR'
+            p, c = label.split('(')[0].split('~')
+            return f"{p}–{c.split('_')[0].split('=')[0]}"
+        n[f'scm_{ds}_included'] = ', '.join(short(x) for x in d['included'])
+        n[f'scm_{ds}_n_included'] = len(d['included'])
+        n[f'scm_{ds}_fits'] = d['fits']
+        for h in d['history']:
+            if h['step'] == 'forward add':
+                n[f"scm_{ds}_forward_{short(h['added']).replace('–', '_')}"] = fmt(h['delta_ofv'], 1)
+            if h['step'] == 'backward remove':
+                n[f"scm_{ds}_backward_{short(h['removed']).replace('–', '_')}"] = fmt(h['delta_ofv'], 1)
+        n[f'scm_{ds}_removed'] = ', '.join(short(h['removed']) for h in d['history'] if h['step'] == 'backward remove') \
+            or 'none'
+
+    # ------------------------------------------------------------------ dates and recall
+    started = sorted(json.loads(p.read_text(encoding='utf-8'))['started'][:10]
+                     for p in (BENCH / 'runs').glob('*/*/*/rep*/run.json'))
+    if started:
+        a, b = (dt.date.fromisoformat(s) for s in (started[0], started[-1]))
+        n['run_dates'] = (f'on {a:%B} {a.day}, {a.year}' if a == b else
+                          f'between {a:%B} {a.day} and {b:%B} {b.day}, {b.year}')
+    recall = {}
+    for _, r in runs[runs['dataset'].isin(['pheno', 'remifentanil'])].iterrows():
+        recall[(r['dataset'], r['condition'], r['llm'], r['rep'])] = recalled(run_dir(r))
+    for llm in LLM:
+        ks = [k for k in recall if k[2] == llm]
+        n[f'recall_{llm}'] = of_runs(sum(bool(recall[k]) for k in ks), len(ks))
+        n[f'recall_{llm}_total'] = len(ks)
+    (BUILD / 'recall.json').write_text(json.dumps({'/'.join(k): v for k, v in recall.items()}, indent=1,
+                                                  ensure_ascii=False), encoding='utf-8')
+    (BUILD / 'numbers.json').write_text(json.dumps(n, indent=1, ensure_ascii=False), encoding='utf-8')
+    print(json.dumps(n, indent=1, ensure_ascii=False))
+    print(pd.DataFrame(rows).to_string())
+
+
+if __name__ == '__main__':
+    main()
