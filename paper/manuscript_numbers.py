@@ -430,6 +430,32 @@ def main():
             n[f'reffit_{ds}_{p}'] = fmt(r['median'], 2)
             n[f'reffit_{ds}_{p}_pct'] = f"{abs(1 - r['median']) * 100:.0f}"
 
+    # strongly supported reference relationships (removal from the reference fit costs >= 6.63) kept without knowledge
+    strong = {(ds, r['effect'].split('_')[0]) for ds, d in evidence.items() for r in d.get('removals', [])
+              if r.get('delta_ofv') is not None and r['delta_ofv'] >= 6.63}
+    nk = [(r, f) for f, (_, r) in zip(rel, runs.iterrows())
+          if r['condition'] == 'none' and r['dataset'] in ('pheno', 'remifentanil')]
+    missed = []
+    for r, f in nk:
+        miss = [e for ds, e in strong if ds == r['dataset'] and tuple(e.split('~')) not in f]
+        if miss:
+            secs_r = [json.loads(p.read_text(encoding='utf-8')).get('seconds') or 0
+                      for p in run_dir(r).glob('models/*/summary.json')]
+            missed.append(dict(llm=r['llm'], dataset=r['dataset'], rep=r['rep'], missing=miss, fits=int(r['fits']),
+                               fit_minutes=float(np.median(secs_r)) / 60 if secs_r else None,
+                               hours_left=json.loads((run_dir(r) / 'results.json').read_text(encoding='utf-8'))
+                               ['budget'].get('hours_left')))
+    if strong and nk:
+        n['strong_kept'] = of_runs(len(nk) - len(missed), len(nk))
+        if not missed:
+            n['all_strong_kept'] = 'yes'
+        else:
+            n['strong_missed_desc'] = '; '.join(
+                f"{word(1)} {LLM[m['llm']]} {LABEL[m['dataset']].lower()} run omitted "
+                f"{', '.join(e.replace('~', '–') for e in m['missing'])} after {word(m['fits'])} fits"
+                f" (median {fmt(m['fit_minutes'], 0)} minutes per fit, {fmt(m['hours_left'], 1)} hours left)"
+                for m in missed)
+
     # ------------------------------------------------------------------ deterministic stepwise baseline
     scm_path = EVAL / 'scm_baseline.json'
     scm = json.loads(scm_path.read_text(encoding='utf-8')) if scm_path.exists() else {}

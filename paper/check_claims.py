@@ -82,9 +82,17 @@ def checks():
         fc = covs(results(r)['final_model']['specification'])
         ok &= all(x[2] == 'exponential' for x in fc if x[1] == 'AGE') and all(x[2] == 'power' for x in fc if x[1] == 'LBM')
     check('remifentanil without knowledge: exponential age, power LBM, no linear forms tested', ok)
-    check('remifentanil without knowledge: V3~AGE only in Claude runs',
-          numbers.get('remifentanil_none_V3_AGE_gpt') in ('not the run', 'neither run', 'none of the three runs')
-          and numbers.get('remifentanil_none_V3_AGE_claude') in ('the run', 'both runs', 'all three runs'))
+    check('remifentanil without knowledge: no GPT run added V3~AGE',
+          numbers.get('remifentanil_none_V3_AGE_gpt', '').startswith(('not', 'neither', 'none')))
+    check('without knowledge, every run omitted Apgar on V and age on V1',
+          numbers.get('pheno_none_V_APGR', '').startswith(('none', 'neither', 'not'))
+          and numbers.get('remifentanil_none_V1_AGE', '').startswith(('none', 'neither', 'not')))
+    if numbers.get('strong_missed_desc'):
+        ok = True
+        for _, r in runs[(runs['condition'] == 'none')].iterrows():
+            if r['dataset'] == 'remifentanil' and r['llm'] == 'claude' and int(r['fits']) <= 8:
+                ok &= bool(re.search(r'time (budget|limit)', report_text(r), re.I))
+        check('the run that omitted a strong effect cited the time budget', ok)
     check('remifentanil with the statement: V3~AGE in every run',
           numbers.get('remifentanil_knowledge_V3_AGE', '').startswith(('both', 'all')))
     rk = runs[(runs['dataset'] == 'remifentanil') & (runs['condition'] == 'knowledge')]
