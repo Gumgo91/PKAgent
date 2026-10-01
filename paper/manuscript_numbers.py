@@ -430,6 +430,38 @@ def main():
             n[f'reffit_{ds}_{p}'] = fmt(r['median'], 2)
             n[f'reffit_{ds}_{p}_pct'] = f"{abs(1 - r['median']) * 100:.0f}"
 
+    # remifentanil with the expert statement: effects on V3 implied by the statement, LBM on Q2/Q3
+    rk = [(r, f) for f, (_, r) in zip(rel, runs.iterrows())
+          if r['dataset'] == 'remifentanil' and r['condition'] == 'knowledge']
+    if rk:
+        def kept_v3(f):
+            return [e for e in (('V3', 'AGE'), ('V3', 'LBM')) if e in f]
+        n['rk_v3_any'] = of_runs(sum(bool(kept_v3(f)) for _, f in rk), len(rk))
+        n['rk_v3age'] = of_runs(sum(('V3', 'AGE') in f for _, f in rk), len(rk))
+        n['rk_v3lbm'] = of_runs(sum(('V3', 'LBM') in f for _, f in rk), len(rk))
+        support, weak = [], []
+        for r, f in rk:
+            t = tests.get((r['dataset'], r['condition'], r['llm'], r['rep']), {})
+            for e in kept_v3(f):
+                v = [x['delta_ofv'] for x in t.get('covariate_tests', []) if x['relationship'] == '~'.join(e)]
+                if v:
+                    support.append(max(v))
+                    if max(v) < 6.63:
+                        weak.append((r['llm'], e, max(v)))
+        n['rk_v3_support'] = span(support, 1)
+        if weak:
+            n['rk_v3_weak'] = 'yes'
+            n['rk_v3_weak_sentence'] = '; '.join(
+                f"one {LLM[llm]} run kept an effect of {e[1].replace('AGE', 'age')} on V3 that failed its own retention "
+                f"criterion (OFV change {fmt(v, 1)})" for llm, e, v in weak)
+        age_runs = [r for r, f in rk if ('V3', 'AGE') in f]
+        n['rk_v3age_ratio'] = span([r['ratio_V3_median'] for r in age_runs], 2)
+        v3e = [subgroup_ratio(r, 'V3', lambda s: s['AGE'] >= 65) for r in age_runs]
+        n['rk_v3age_elderly'] = span([x for x in v3e if x is not None], 2)
+        lbmq = [x['delta_ofv'] for r, f in rk for x in tests.get((r['dataset'], r['condition'], r['llm'], r['rep']), {})
+                .get('covariate_tests', []) if x['relationship'] in ('Q2~LBM', 'Q3~LBM')]
+        n['rk_lbm_q_max'] = fmt(max(lbmq), 1) if lbmq else 'NA'
+
     # strongly supported reference relationships (removal from the reference fit costs >= 6.63) kept without knowledge
     strong = {(ds, r['effect'].split('_')[0]) for ds, d in evidence.items() for r in d.get('removals', [])
               if r.get('delta_ofv') is not None and r['delta_ofv'] >= 6.63}

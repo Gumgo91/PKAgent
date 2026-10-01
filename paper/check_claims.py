@@ -84,6 +84,9 @@ def checks():
     check('remifentanil without knowledge: exponential age, power LBM, no linear forms tested', ok)
     check('remifentanil without knowledge: no GPT run added V3~AGE',
           numbers.get('remifentanil_none_V3_AGE_gpt', '').startswith(('not', 'neither', 'none')))
+    check('with the statement, every run implemented every reference relationship (form family)',
+          all(numbers.get(f'{ds}_knowledge_all_forms', '').startswith(('both', 'all', 'the run'))
+              for ds in ('pheno', 'remifentanil')))
     check('without knowledge, every run omitted Apgar on V and age on V1',
           numbers.get('pheno_none_V_APGR', '').startswith(('none', 'neither', 'not'))
           and numbers.get('remifentanil_none_V1_AGE', '').startswith(('none', 'neither', 'not')))
@@ -93,20 +96,20 @@ def checks():
             if r['dataset'] == 'remifentanil' and r['llm'] == 'claude' and int(r['fits']) <= 8:
                 ok &= bool(re.search(r'time (budget|limit)', report_text(r), re.I))
         check('the run that omitted a strong effect cited the time budget', ok)
-    check('remifentanil with the statement: V3~AGE in every run',
-          numbers.get('remifentanil_knowledge_V3_AGE', '').startswith(('both', 'all')))
+    check('remifentanil with the statement: every run kept an effect on V3',
+          numbers.get('rk_v3_any', '').startswith(('both', 'all')))
     rk = runs[(runs['dataset'] == 'remifentanil') & (runs['condition'] == 'knowledge')]
     ok = True
     for _, r in rk.iterrows():
         fc = covs(results(r)['final_model']['specification'])
-        ok &= not any(x[1] == 'LBM' and x[0] in ('Q2', 'Q3', 'V3') for x in fc)
+        ok &= not any(x[1] == 'LBM' and x[0] in ('Q2', 'Q3') for x in fc)
         t = tests[(r['dataset'], r['condition'], r['llm'], r['rep'])]
-        tested = any(x['relationship'] in ('V3~LBM', 'Q2~LBM', 'Q3~LBM') for x in t['covariate_tests'])
+        tested = any(x['relationship'] in ('Q2~LBM', 'Q3~LBM') for x in t['covariate_tests'])
         specs = [covs(json.loads(p.read_text(encoding='utf-8'))) for p in
                  (BENCH / 'runs' / r['dataset'] / r['condition'] / r['llm'] / r['rep'] / 'models').glob('*/spec.json')]
-        tested |= any(any(x[1] == 'LBM' and x[0] in ('Q2', 'Q3', 'V3') for x in c) for c in specs)
+        tested |= any(any(x[1] == 'LBM' and x[0] in ('Q2', 'Q3') for x in c) for c in specs)
         ok &= tested
-    check('remifentanil with the statement: LBM on Q2, Q3, V3 tested and dropped in every run', ok)
+    check('remifentanil with the statement: LBM on Q2 and Q3 tested and dropped in every run', ok)
     pairs = []
     for key, t in tests.items():
         if key[0] != 'remifentanil':
@@ -134,10 +137,10 @@ def checks():
           set(re.findall(r'(GPT-6\.1 Sol|Claude Opus 5\.5) (\w+)', numbers.get('runs_near_time_limit_desc', ''))) <=
           {('GPT-6.1 Sol', 'remifentanil')})
     check('GPT fitted more models in every dataset and condition', numbers.get('gpt_more_fits_every_cell') == 'yes')
-    lo, hi = (float(x) for x in numbers['remi_knowledge_V3_elderly'].replace('−', '-').split(' to ')) \
-        if ' to ' in numbers.get('remi_knowledge_V3_elderly', '') else (0, 0)
+    v = numbers.get('rk_v3age_elderly', '0').replace('−', '-')
+    lo, hi = (float(x) for x in v.split(' to ')) if ' to ' in v else (float(v), float(v))
     check('age effect on V3: about a quarter of the reference in older subjects', .18 <= lo and hi <= .32,
-          numbers.get('remi_knowledge_V3_elderly'))
+          numbers.get('rk_v3age_elderly'))
     mm = numbers.get('mm_vs_linear', '0').replace(',', '').split(' to ')[0]
     check('oral MM: MM vs linear about 800 or more', float(mm) >= 750, numbers.get('mm_vs_linear'))
     check('remifentanil V1~AGE is the weakest reference relationship (drop-one)',
