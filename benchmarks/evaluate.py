@@ -99,6 +99,25 @@ REFERENCE_COVARIATES = {
 }
 
 
+REFERENCE_FORMS = {            # functional form of each reference relationship (power with a fixed exponent of 1 for WT)
+    'pheno': {('CL', 'WT'): 'power', ('V', 'WT'): 'power', ('V', 'APGR'): 'categorical'},
+    'remifentanil': {k: 'linear' for k in REFERENCE_COVARIATES['remifentanil']},
+    'oral_mm': {},
+}
+
+
+def form_agreement(spec, transformations, base_columns, reference_names, name):
+    """Fraction of the reference relationships present in the final model with the reference functional form."""
+    forms = REFERENCE_FORMS[name]
+    if not forms:
+        return None
+    found = {}
+    for c in spec['covariates']:
+        for src in _sources(c['covariate'], transformations, base_columns):
+            found.setdefault((to_reference_name(c['parameter'], reference_names), src), set()).add(c['form'])
+    return sum(1 for k, f in forms.items() if f in found.get(k, set())) / len(forms)
+
+
 def _sources(column, transformations, base_columns):
     """Source columns of a (possibly derived) covariate column."""
     for t in reversed(transformations):
@@ -191,6 +210,9 @@ def evaluate_run(path, reference_fits):
     row['covariate_false_positives'] = len(found - target)
     row['covariate_false_negatives'] = len(target - found)
     row['covariates_exact'] = found == target
+    row['covariate_recall'] = len(found & target) / len(target) if target else None
+    row['covariate_precision'] = len(found & target) / len(found) if found else (1. if not target else None)
+    row['form_agreement'] = form_agreement(spec, transformations, base_columns, set(ref_tv), name)
     agent_tv = typical_values(spec, s, subjects)
     ratios = {}
     for p, ref_values in ref_tv.items():
