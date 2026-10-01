@@ -31,7 +31,12 @@
    },
    "ofv_nonmem": 586.27605628,
    "note": "OFV excludes the normal constant (PKPy2 OFV = NONMEM OFV + 155*log(2*pi) for an exact likelihood)"
-  }
+  },
+  "misleading_knowledge": "In these neonates, phenobarbital clearance and volume of distribution do not depend on body weight, and a 5-minute Apgar score below 5 lowers clearance rather than changing the volume of distribution.",
+  "misleading_claims": [
+   "no weight effect on CL or V",
+   "Apgar below 5 on CL instead of V"
+  ]
  },
  "remifentanil": {
   "file": "remifentanil.csv",
@@ -108,6 +113,11 @@
     "KM": "ug/L"
    },
    "note": "Typical values are those of the simulation (geometric means of the simulated individual values in the subset: Ka 0.982, V 67.2, VMAX 981, KM 232)."
-  }
+  },
+  "misleading_knowledge": "The elimination of this drug is linear (dose-proportional) within the studied dose range, and its disposition requires two compartments.",
+  "misleading_claims": [
+   "linear elimination",
+   "two compartments"
+  ]
  }
 }

@@ -20,7 +20,8 @@ sys.path.insert(0, str(HERE.parent / 'src'))
 from pkagent import MODELS, Budget, Settings, run          # noqa: E402
 
 DATASETS = json.loads((HERE / 'datasets.json').read_text(encoding='utf-8'))
-CONDITIONS = ('none', 'knowledge')
+CONDITIONS = ('none', 'knowledge')              # the default grid
+EXTRA_CONDITIONS = ('misleading',)               # a deliberately wrong expert sentence (datasets that define one)
 
 
 def out_dir(dataset, condition, model, rep):
@@ -35,7 +36,9 @@ def run_one(dataset, condition, model, rep, budget, workers, threads, reasoning)
         return out
     settings = Settings(model=MODELS.get(model, model), workers=workers, threads_per_worker=threads,
                         seed=20261001 + rep, reasoning_effort=reasoning, budget=budget)
-    knowledge = d['knowledge'] if condition == 'knowledge' else None
+    knowledge = {'knowledge': d['knowledge'], 'misleading': d.get('misleading_knowledge')}.get(condition)
+    if condition == 'misleading' and not knowledge:
+        raise ValueError(f'{dataset} has no misleading_knowledge')
     print(f'=== {dataset} / {condition} / {model} / rep {rep}', flush=True)
     return run(HERE / 'data' / d['file'], out, d['description'], knowledge, settings, d.get('objective'))
 
@@ -68,12 +71,12 @@ def launch(cell, a):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--dataset', choices=list(DATASETS))
-    ap.add_argument('--condition', choices=CONDITIONS)
+    ap.add_argument('--condition', choices=CONDITIONS + EXTRA_CONDITIONS)
     ap.add_argument('--model', default='claude')
     ap.add_argument('--rep', type=int, default=1)
     ap.add_argument('--all', action='store_true')
     ap.add_argument('--datasets', nargs='+', default=list(DATASETS))
-    ap.add_argument('--conditions', nargs='+', default=list(CONDITIONS))
+    ap.add_argument('--conditions', nargs='+', default=list(CONDITIONS), choices=CONDITIONS + EXTRA_CONDITIONS)
     ap.add_argument('--models', nargs='+', default=['gpt', 'claude'])
     ap.add_argument('--reps', type=int, default=1)
     ap.add_argument('--jobs', type=int, default=1, help='runs in parallel (separate processes)')

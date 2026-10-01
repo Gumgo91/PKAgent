@@ -171,6 +171,22 @@ def recall_mentions(run_dir):
     return hits
 
 
+def misleading_followed(name, spec, found, row):
+    """Which wrong claims of the misleading sentence the final model adopted (';'-separated), or 'none'."""
+    adopted = []
+    if name == 'pheno':
+        if ('CL', 'WT') not in found and ('V', 'WT') not in found:
+            adopted.append('no weight effect')
+        if ('CL', 'APGR') in found:
+            adopted.append('Apgar on CL')
+    elif name == 'oral_mm':
+        if row.get('elimination') == 'linear':
+            adopted.append('linear elimination')
+        if row.get('compartments') == 2:
+            adopted.append('two compartments')
+    return ';'.join(adopted) or 'none'
+
+
 def evaluate_run(path, reference_fits):
     res = json.loads(path.read_text(encoding='utf-8'))
     parts = path.parent.relative_to(HERE / 'runs').parts
@@ -230,6 +246,8 @@ def evaluate_run(path, reference_fits):
                                    and all(.8 <= v['median'] <= 1.25 for v in ratios.values()))
     row['reproduced'] = bool(row.get('structure_match') and row.get('covariates_exact')
                              and row.get('all_within_20pct'))
+    if condition == 'misleading':
+        row['misleading_followed'] = misleading_followed(name, spec, found, row)
     rf = reference_fits.get(name)
     if rf and rf.get('ofv') is not None and s.get('ofv') is not None:
         row['delta_ofv_vs_reference'] = s['ofv'] - rf['ofv']
