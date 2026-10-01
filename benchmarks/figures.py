@@ -159,7 +159,7 @@ def figure_covariates(runs):
         for spine in ax.spines.values():
             spine.set_visible(False)
         ax.tick_params(length=0)
-    fig.tight_layout(h_pad=.4)
+    fig.tight_layout(h_pad=1.4)
     _save(fig, 3)
 
 

@@ -312,8 +312,13 @@ def main():
         problems.append(f'{n_refs} references > 50')
     if n_fig + n_tab > 7:
         problems.append('more than 7 figures and tables')
+    import check_claims
+    failed = [name for name, ok, _ in check_claims.checks() if not ok]
+    problems += [f'claim no longer holds: {name}' for name in failed]
     for p in problems:
         print('WARNING:', p)
+    if problems and '--draft' not in sys.argv:
+        raise SystemExit('final build refused (use --draft to build anyway): ' + '; '.join(problems))
 
     d = base_document()
     # title page
