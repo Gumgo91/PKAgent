@@ -20,6 +20,11 @@ BUILD = HERE / 'build'
 sys.path.insert(0, str(BENCH))
 from recall import recalled                                         # noqa: E402
 from evaluate import reference_typical, typical_values, _match     # noqa: E402
+from agent_tests import rest as _rest                                # noqa: E402
+
+
+def same_rest(a, b):
+    return _rest(a) == _rest(b)
 
 DATASETS = json.loads((BENCH / 'datasets.json').read_text(encoding='utf-8'))
 REFERENCE = {
@@ -472,6 +477,25 @@ def main():
             tested_q += any_spec
         n['rk_lbm_q_tested'] = of_runs(tested_q, len(rk))
         n['rk_lbm_q_kept'] = of_runs(kept_q, len(rk))
+
+    # direct comparisons of linear and exponential covariate forms (same relationships and parameter count)
+    cmp_ = []
+    for _, r in main_grid[main_grid['dataset'] == 'remifentanil'].iterrows():
+        res = json.loads((run_dir(r) / 'results.json').read_text(encoding='utf-8'))
+        conv = {m['model_id']: m for m in res['models'] if m.get('status') == 'converged'}
+        specs = {mid: json.loads((run_dir(r) / 'models' / mid / 'spec.json').read_text(encoding='utf-8')) for mid in conv}
+        def sig(sp):
+            return {(c['parameter'], c['covariate']) for c in sp.get('covariates', [])}, {c['form'] for c in sp.get('covariates', [])}
+        for a in specs:
+            for b in specs:
+                (pa, fa), (pb, fb) = sig(specs[a]), sig(specs[b])
+                if pa and pa == pb and fa == {'linear'} and fb == {'exponential'}                         and conv[a]['n_estimated'] == conv[b]['n_estimated'] and same_rest(specs[a], specs[b]):
+                    cmp_.append(conv[a]['ofv'] - conv[b]['ofv'])
+    n['form_cmp_n'] = len(cmp_)
+    n['form_cmp_word'] = word(len(cmp_))
+    n['form_cmp_span'] = span(cmp_, 1)
+    if cmp_ and all(x > 0 for x in cmp_):
+        n['form_cmp_exp_better'] = 'yes'
 
     # functional forms of age and LBM in the remifentanil final models without knowledge
     forms = {'AGE': set(), 'LBM': set()}

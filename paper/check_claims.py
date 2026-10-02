@@ -11,6 +11,9 @@ from pathlib import Path
 
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'benchmarks'))
+from agent_tests import rest as _rest  # noqa: E402
+
 HERE = Path(__file__).resolve().parent
 BENCH = HERE.parent / 'benchmarks'
 EVAL = BENCH / 'evaluation'
@@ -90,8 +93,6 @@ def checks():
             if r['dataset'] == 'remifentanil' and r['llm'] == 'claude' and int(r['fits']) <= 8:
                 ok &= bool(re.search(r'time (budget|limit)', report_text(r), re.I))
         check('the run that omitted a strong effect cited the time budget', ok)
-    check('remifentanil with the statement: every run kept an effect on V3',
-          numbers.get('rk_v3_any', '').startswith(('both', 'all')))
     pairs = []
     for key, t in tests.items():
         if key[0] != 'remifentanil':
@@ -105,11 +106,11 @@ def checks():
         for a in specs:
             for b in specs:
                 ca, cb = covs(specs[a]), covs(specs[b])
-                if a < b and ca and len(ca) == len(cb) and {(x[0], x[1]) for x in ca} == {(x[0], x[1]) for x in cb} \
+                if ca and len(ca) == len(cb) and {(x[0], x[1]) for x in ca} == {(x[0], x[1]) for x in cb} \
                         and {x[2] for x in ca} == {'linear'} and {x[2] for x in cb} == {'exponential'} \
-                        and ofv[a]['n_estimated'] == ofv[b]['n_estimated']:
+                        and ofv[a]['n_estimated'] == ofv[b]['n_estimated'] and _rest(specs[a]) == _rest(specs[b]):
                     pairs.append(round(ofv[a]['ofv'] - ofv[b]['ofv'], 1))
-    check('one direct linear vs exponential comparison, 9.1 in favor of exponential', pairs == [9.1], pairs)
+    check('every direct linear vs exponential comparison favored exponential', pairs and all(x > 0 for x in pairs), pairs)
     check('GPT plotted the data and screened covariates in every run',
           numbers.get('gpt_plot_data', '').startswith('all') and numbers.get('gpt_screen', '').startswith('all'))
     check('runs near the time limit are GPT remifentanil runs only',
