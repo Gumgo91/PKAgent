@@ -186,6 +186,10 @@ def misleading_followed(name, spec, found, row):
     return ';'.join(adopted) or 'none'
 
 
+STANDARD_VPC = (json.loads((HERE / 'evaluation' / 'standard_vpc.json').read_text(encoding='utf-8'))
+                if (HERE / 'evaluation' / 'standard_vpc.json').exists() else {})   # benchmarks/standard_vpc.py
+
+
 def evaluate_run(path, reference_fits):
     res = json.loads(path.read_text(encoding='utf-8'))
     parts = path.parent.relative_to(HERE / 'runs').parts
@@ -252,6 +256,9 @@ def evaluate_run(path, reference_fits):
         row['delta_ofv_vs_reference'] = s['ofv'] - rf['ofv']
         row['delta_aic_vs_reference'] = s['aic'] - rf['aic']
     vpc = (final.get('vpc') or {}).get('result') or {}
+    std = STANDARD_VPC.get('/'.join(parts))           # the standard VPC where the agent's own VPC was kept
+    if std:
+        vpc = std['result']
     cov = [v.get('observed_percentiles_inside') for v in vpc.values() if isinstance(v, dict)]
     if cov:
         inside = sum(int(c.split('/')[0]) for c in cov if c)

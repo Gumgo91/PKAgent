@@ -46,7 +46,9 @@ SPECS = {
                   structure=dict(type='michaelis_menten', compartments=1, absorption='first_order'),
                   parameters=dict(V=70., Ka=1., VMAX=1000., KM=250.),
                   iiv=dict(V=.09, Ka=.09, VMAX=.09, KM=.09),
-                  residual=dict(proportional=.2))),
+                  # the 20% residual error of the simulation is exponential: log(DV/IPRED) from the true individual
+                  # parameters in the source file is symmetric (SD 0.20), DV/IPRED - 1 is skewed (0.57)
+                  residual=dict(lognormal=.2))),
     'oral_mm2': dict(
         prepare=[],
         spec=dict(name='reference: simulation model (nlmixr2data Oral_2CPTMM)',

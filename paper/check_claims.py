@@ -149,6 +149,107 @@ def checks():
           numbers.get('recall_gpt_none', '').startswith(('none', 'neither', 'not')))
     check('GPT recall statements name Minto', all('minto' in h['term'].lower() for k, v in json.loads(
         (HERE / 'build' / 'recall.json').read_text(encoding='utf-8')).items() if '/gpt/' in k for h in v))
+
+    # remifentanil with the statement: the age effect on V1 where tested (weak support reported when below 6.63) and
+    # the runs that never tested it (reports describe the data as supporting the statement)
+    rk = runs[(runs['dataset'] == 'remifentanil') & (runs['condition'] == 'knowledge')]
+    weak_ok, untested_ok, n_untested = True, True, 0
+    for _, r in rk.iterrows():
+        t = [x for x in tests[(r['dataset'], r['condition'], r['llm'], r['rep'])]['covariate_tests']
+             if x['relationship'] == 'V1~AGE']
+        txt = report_text(r)
+        if not t:
+            n_untested += 1
+            untested_ok &= bool(re.search(r'data support(ed)? (age effects on all six|each part of the knowledge)', txt))
+        elif max(t, key=lambda x: max(x['with_model'], x['without_model']))['delta_ofv'] < 6.63:
+            weak_ok &= bool(re.search(r'(V1\W{0,2}age|AGE\W{0,2}V1|age\W{0,2}V1)[^.]{0,120}'
+                                      r'(weak|borderline|includes 0|prior-supported|exception)|'
+                                      r'(weak|borderline)[^.]{0,40}(V1\W{0,2}age|AGE\W{0,2}V1)', txt, re.I))
+    check('remifentanil statement runs: weak V1-age support reported where tested and below 6.63', weak_ok)
+    check('remifentanil statement runs that did not test V1-age describe the data as supporting the statement',
+          untested_ok and numbers.get('rk_v1age_untested') == {0: 'no', 1: 'one', 2: 'two', 3: 'three'}.get(n_untested))
+    weak_v3 = [r for _, r in rk.iterrows() if r['llm'] == 'gpt' and 'V3~AGE' in str(r.get('covariates_found', ''))]
+    check('the weak V3-age effect kept with the statement is called analyst-supported in its report',
+          numbers.get('rk_v3_weak') != 'yes' or any(re.search(r'analyst-supported', report_text(r), re.I) for r in weak_v3))
+    # oral MM: the fourfold fall of apparent clearance with dose cited in the reports without knowledge
+    on = runs[(runs['dataset'] == 'oral_mm') & (runs['condition'] == 'none')]
+    check('oral MM runs without knowledge cite the fall of apparent clearance with dose',
+          all(re.search(r'(CL/F|apparent clearance|clearance)[^.]{0,160}(fell|falls|decreas|declin|drop|lower)|'
+                        r'(decreas|declin|fall)\w* (in )?apparent clearance|(fourfold|4-fold|4\.1)', report_text(r), re.I)
+              for _, r in on.iterrows()))
+    check('oral MM: dose effects tested only by GPT', numbers.get('oral_dose_all_gpt') == 'yes')
+    check('oral MM: exponential residual error selected only by GPT', numbers.get('oral_mm_lognormal_llm') == 'GPT-6.1 Sol')
+    # misleading statements
+    if len(mis):
+        check('misleading: unbounded Apgar-on-CL estimates opposite in every phenobarbital run',
+              numbers.get('pm_apgar_cl_opposite', '').startswith(('all', 'both')))
+        sec = numbers.get('om_2cmt_second', '99').replace('−', '-').split(' to ')
+        check('misleading: the second compartment stayed below the inclusion threshold in every run',
+              max(float(x) for x in sec) < 3.84, numbers.get('om_2cmt_second'))
+        check('misleading: the stated second compartment was adopted in every oral MM run',
+              numbers.get('om_2cmt_adopted', '').startswith(('all', 'both')))
+    # tool use: GPT more often than Claude for each named behavior (36 main runs)
+    prof = pd.DataFrame(json.loads((HERE / 'build' / 'run_profiles.json').read_text(encoding='utf-8')))
+    prof['boot'] = prof['bootstrap'] != '–'
+    cnt = {k: prof.groupby('llm')[k].sum().to_dict() for k in ('plot_data', 'fitted_after_plots', 'boot')}
+    check('GPT plotted, refitted after plots, and bootstrapped more often than Claude',
+          all(v['gpt'] > v['claude'] for v in cnt.values()), cnt)
+    check('three runs per dataset, condition, and LLM', numbers.get('grid_complete') == 'yes')
+    check('reference-fit VPCs exist', all(f'reffit_{ds}_vpc' in numbers for ds in ('pheno', 'remifentanil', 'oral_mm')))
+    check('phenobarbital: a second compartment tested only by GPT',
+          numbers.get('pheno_2cmt_claude', '').startswith(('none', 'neither')) and
+          not numbers.get('pheno_2cmt_gpt', 'none').startswith(('none', 'neither')))
+    # remifentanil V1-age without knowledge: one run's last test fell below 6.63 after an earlier test of 7.7
+    flips = []
+    for key, t in tests.items():
+        if key[:2] != ('remifentanil', 'none'):
+            continue
+        v = [x for x in t['covariate_tests'] if x['relationship'] == 'V1~AGE']
+        if v:
+            last = max(v, key=lambda x: max(x['with_model'], x['without_model']))['delta_ofv']
+            if last < 6.63 <= max(x['delta_ofv'] for x in v):
+                flips.append(round(max(x['delta_ofv'] for x in v), 1))
+    check('remifentanil without knowledge: one run had an earlier V1-age test of 7.7', flips == [7.7], flips)
+    # remifentanil with the statement: the run without single V3 tests tested both V3 effects jointly (9.8 to 24.8)
+    joint = []
+    for _, r in rk.iterrows():
+        key = (r['dataset'], r['condition'], r['llm'], r['rep'])
+        if any(x['relationship'].startswith('V3~') for x in tests[key]['covariate_tests']):
+            continue
+        d = BENCH / 'runs' / key[0] / key[1] / key[2] / key[3]
+        res = results(r)
+        conv = {m['model_id']: m['ofv'] for m in res['models'] if m.get('status') == 'converged'}
+        specs = {m: json.loads((d / 'models' / m / 'spec.json').read_text(encoding='utf-8')) for m in conv}
+        for a in specs:
+            for b_ in specs:
+                ca, cb = set((x[0], x[1]) for x in covs(specs[a])), set((x[0], x[1]) for x in covs(specs[b_]))
+                if cb - ca == {('V3', 'AGE'), ('V3', 'LBM')} and ca <= cb and _rest(specs[a]) == _rest(specs[b_]):
+                    joint.append(round(conv[a] - conv[b_], 1))
+    lo, hi = (float(x) for x in numbers['rk_v3_strong_support'].split(' to '))
+    check('remifentanil statement: the V3 effects kept without single tests were tested jointly, within 9.8 to 24.8',
+          numbers.get('rk_v3_untested') == 'one' and joint and all(lo <= x <= hi for x in joint), joint)
+    check('oral MM: every run that fitted log-normal error selected it',
+          numbers.get('oral_mm_lognormal_when_fitted') == 'yes')
+    if len(mis):
+        mis_tests = [round(c['delta_ofv'], 1) for t in json.loads((EVAL / 'agent_tests.json').read_text(encoding='utf-8'))
+                     if t['dataset'] == 'oral_mm' and t['condition'] == 'misleading' for c in t['compartment_tests']
+                     if c['compartments'] == [1, 2] and c.get('type') == 'michaelis_menten']
+        check('misleading oral MM: the runs without the statement kept one compartment for the same OFV decrease',
+              numbers.get('om_control_all_one') == 'yes' and numbers.get('om_control_dofv') in map(str, mis_tests),
+              (numbers.get('om_control_dofv'), mis_tests))
+    # the run whose final model PKAgent gave standard errors after finalization
+    fin = []
+    for _, r in runs.iterrows():
+        d = BENCH / 'runs' / r['dataset'] / r['condition'] / r['llm'] / r['rep']
+        final = results(r)['final_model']['model_id']
+        calls = [json.loads(line) for line in (d / 'tool_log.jsonl').read_text(encoding='utf-8').splitlines()]
+        fitted_without = any(c['tool'] == 'fit_models' and c['args'].get('standard_errors') is False
+                             and final in [m.get('model_id') for m in (c.get('result') or {}).get('results', [])
+                                           if isinstance(m, dict)] for c in calls)
+        summ = json.loads((d / 'models' / final / 'summary.json').read_text(encoding='utf-8'))
+        if fitted_without and summ.get('uncertainty_status') == 'computed':
+            fin.append('/'.join((r['dataset'], r['condition'], r['llm'], r['rep'])))
+    check('standard errors were added after finalization in exactly one run', len(fin) == 1, fin)
     return out
 
 

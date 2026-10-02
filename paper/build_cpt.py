@@ -43,9 +43,9 @@ FUNDING = 'No funding was received for this work.'
 COI = 'The authors declared no competing interests for this work.'
 CONTRIBUTIONS = ('H.K. wrote the manuscript; H.K. designed the research; H.K. performed the research; H.K. analyzed '
                  'the data; H.K. contributed new reagents/analytical tools.')
-AI_DISCLOSURE = ('[To be completed by the authors: disclosure of any use of artificial intelligence tools in preparing '
+AI_DISCLOSURE = ('[To be completed by the author: disclosure of any use of artificial intelligence tools in preparing '
                  'this manuscript, as required by the journal (tool name and version, date of use, role, and how the '
-                 'authors reviewed the output). The language models evaluated in this study are described in Methods.]')
+                 'author reviewed the output). The language models evaluated in this study are described in Methods.]')
 
 CITE = re.compile(r'\s*\[([A-Za-z0-9]+(?:;\s*[A-Za-z0-9]+)*)\]([.,;:])?')
 
@@ -151,13 +151,17 @@ def page_numbers(section):
 INLINE = re.compile(r'(\*\*[^*]+\*\*|\*[^*]+\*|\^\{[^}]+\}|<[^>]+>|⟦HL⟧.*?⟦/HL⟧)')
 
 
-def add_inline(p, text, size=None, bold=False):
-    """Add text with **bold**, *italic*, ^{superscript} and ⟦HL⟧highlight⟦/HL⟧ markup to a paragraph."""
-    for part in INLINE.split(text):
+def add_inline(p, text, size=None, bold=False, literal=False):
+    """Add text with **bold**, *italic*, ^{superscript} and ⟦HL⟧highlight⟦/HL⟧ markup to a paragraph.
+
+    literal=True adds the text as one plain run (verbatim text such as equations with '*' or '**')."""
+    for part in [text] if literal else INLINE.split(text):
         if not part:
             continue
         kw = {}
-        if part.startswith('**') and part.endswith('**'):
+        if literal:
+            pass
+        elif part.startswith('**') and part.endswith('**'):
             part, kw['bold'] = part[2:-2], True
         elif part.startswith('*') and part.endswith('*') and len(part) > 2:
             part, kw['italic'] = part[1:-1], True
@@ -175,6 +179,19 @@ def add_inline(p, text, size=None, bold=False):
         if size:
             run.font.size = Pt(size)
     return p
+
+
+def set_properties(d, title):
+    """Document properties of a submission file (python-docx otherwise keeps those of its template)."""
+    import datetime as dt
+    cp = d.core_properties
+    now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+    cp.author = cp.last_modified_by = AUTHORS[0][0]
+    cp.title = title
+    cp.comments = cp.subject = cp.keywords = ''
+    cp.created = cp.modified = now
+    cp.revision = 1
+    return d
 
 
 def heading(d, text, level):
@@ -208,13 +225,14 @@ def table1_rows():
                         '(centered at 55 kg); Q2 and Q3 linear in age; V3 constant. Variability model not taken from '
                         'the publication (PKPy2 fit: exponential IIV on all parameters, proportional error)',
         'oral_mm': 'Simulation model: one compartment; first-order absorption; MM elimination; 30% IIV on Ka, V, VMAX, '
-                   'and KM; 20% proportional error',
+                   'and KM; 20% exponential (log-normal) residual error',
     }
     label = dict(pheno='Phenobarbital', remifentanil='Remifentanil', oral_mm='Oral MM (simulated)')
     return [[label[k], design[k], reference[k], f'"{DATASETS[k]["knowledge"]}"'] for k in label]
 
 
-def add_table(d, title, header, rows, footnote, widths, size=9):
+def add_table(d, title, header, rows, footnote, widths, size=9, literal=False):
+    """literal=True adds the body cells verbatim (no markup); title, header and footnote keep the markup."""
     p = d.add_paragraph()
     add_inline(p, title)
     t = d.add_table(rows=1, cols=len(header))
@@ -225,7 +243,7 @@ def add_table(d, title, header, rows, footnote, widths, size=9):
     for row in rows:
         cells = t.add_row().cells
         for cell, v in zip(cells, row):
-            add_inline(cell.paragraphs[0], str(v), size=size)
+            add_inline(cell.paragraphs[0], str(v), size=size, literal=literal)
     for row in t.rows:
         for cell, w in zip(row.cells, widths):
             cell.width = Inches(w)
@@ -310,6 +328,10 @@ def main():
     problems = []
     if n_words > 4000:
         problems.append(f'main text {n_words} > 4000 words')
+    n_words_h = n_words + sum(words(title) for lvl, title, paras in _between(body, 'INTRODUCTION', 'STUDY HIGHLIGHTS'))
+    print(f'main text including headings {n_words_h} words')
+    if n_words_h > 4000:                                 # what an editor's word count of the section shows
+        problems.append(f'main text including headings {n_words_h} > 4000 words')
     if n_abstract > 250:
         problems.append(f'abstract {n_abstract} > 250 words')
     if n_highlights >= 250:
@@ -382,7 +404,7 @@ def main():
               [1.3, 2.6, 2.6, 2.5])
     page_break(d)
     header = ['Dataset, condition', 'Runs (GPT/Claude)', 'Reference structure',
-              'Reference relationships present (reference form)', 'Other relationships per run',
+              'Reference relationships present (reference form family)', 'Other relationships per run',
               'Typical values agree', 'Reproduced', 'ΔOFV vs. reference fit', 'ΔAIC vs. reference fit',
               'Models fitted', 'Hours', 'Fees (USD)']
     rows = [[f"{r['dataset']}, {r['condition'].lower()}", r['runs'], r['structure'],
@@ -391,14 +413,17 @@ def main():
             for r in table2]
     add_table(d, '**Table 2.** Final models of the agent runs compared with the reference models',
               header, rows,
-              'Values are counts over runs, or medians (ranges); with two runs, both values are given. Reference '
-              'relationships: parameter–covariate pairs of the reference model present in the final model, summed over '
+              'Values are counts over runs, or medians (ranges). '
+              + ('Misleading statement: deliberately wrong statement (Supplementary Material S1); counts refer to the '
+                 'true reference model. ' if misleading else '') +
+              'Reference relationships: parameter–covariate pairs of the reference model present in the final model, summed over '
               'runs, with the number in the reference form family in parentheses (NA, the reference model has no '
               'covariates). Other relationships: pairs in the final model that are not in the reference model. '
               'Typical values agree: the median ratio of the subject-level typical values (final/reference model) lay '
               'within 0.80 to 1.25 for every reference parameter. Reproduced: reference structure, exactly the '
-              'reference relationships, and agreement of typical values. ΔOFV and ΔAIC: final model minus the PKPy2 '
-              'fit of the reference model, whose stochastic model is given in Table S2. Fees: language model fees. AIC, '
+              'reference relationships, and agreement of typical values (stochastic models not compared). ΔOFV and '
+              'ΔAIC: final model minus the PKPy2 fit of the reference model, whose stochastic model is given in Table '
+              'S2 (data scale for log-normal error). Fees: language model fees. AIC, '
               'Akaike information criterion; Claude, Claude Opus 5.5; GPT, GPT-6.1 Sol; MM, Michaelis–Menten; NA, not '
               'applicable; OFV, objective function value; USD, US dollars.',
               [1.4, .6, .6, .95, .7, .6, .6, 1.05, 1.0, .75, .75, .8], size=8)
@@ -414,6 +439,7 @@ def main():
                 d.add_paragraph()
 
     OUT.mkdir(exist_ok=True)
+    set_properties(d, TITLE)
     d.save(OUT / 'PKAgent_CPT_manuscript.docx')
     cover_letter()
     for n in range(1, n_fig + 1):
@@ -445,6 +471,7 @@ def cover_letter():
             if k:
                 p.add_run().add_break()
             add_inline(p, line)
+    set_properties(d, 'Cover letter: ' + TITLE)
     d.save(OUT / 'PKAgent_CPT_cover_letter.docx')
 
 

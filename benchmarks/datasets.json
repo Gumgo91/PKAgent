@@ -98,7 +98,7 @@
     "absorption": "first_order",
     "elimination": "Michaelis-Menten"
    },
-   "model": "1-cmt, first-order absorption, Michaelis-Menten elimination; IIV on Ka, V, VMAX, KM; proportional error",
+   "model": "1-cmt, first-order absorption, Michaelis-Menten elimination; IIV on Ka, V, VMAX, KM; exponential (log-normal) error (the source gives 20% residual error without its type; log(DV/IPRED) from the true individual parameters is symmetric)",
    "covariates": [],
    "estimates": {
     "Ka": 1.0,

@@ -81,14 +81,14 @@ def figure_recovery(runs):
                     ax.scatter([r[f'ratio_{p}_median']], [y], marker=MARK[llm], s=9, color=COLOR[cond],
                                edgecolor='white', linewidth=.4, zorder=3)
                     k += 1
-        ax.axvline(1, color='#1F2933', lw=.8)
+        ax.axvline(1, color='#9AA5B1', lw=.6, linestyle=':', zorder=1)
         ax.axvspan(.8, 1.25, color='#E8F1FB', zorder=0)
         ax.set_xscale('log')
         ticks = [.125, .25, .5, 1, 2]
         ax.xaxis.set_major_locator(FixedLocator(ticks))
         ax.xaxis.set_minor_locator(NullLocator())
         ax.set_xticklabels([f'{t:g}' for t in ticks])
-        ax.set_xlim(.1, 2.2)
+        ax.set_xlim(.1, 2.4)
         ax.set_yticks(range(len(params)))
         ax.set_yticklabels(params)
         ax.set_ylim(len(params) - .5, -.5)
@@ -173,7 +173,7 @@ def trajectory(run_dir):
 
 def figure_process(runs):
     """Model development (upper row: lowest OFV so far minus the OFV of the reference model, in the order of fitting;
-    the final model is marked) and resources per run (lower row: fitted models, wall-clock hours, LLM cost)."""
+    the final model is marked) and resources per run (lower row: fitted models, wall-clock hours, LLM fees)."""
     names = [d for d in DATASETS if d in set(runs['dataset'])]
     ref = {d: json.loads((HERE / 'reference_fits' / d / 'reference_fit.json').read_text(encoding='utf-8'))['ofv']
            for d in names}
@@ -194,9 +194,9 @@ def figure_process(runs):
         ax.axhline(0, color='#1F2933', lw=.8, linestyle=':')
         ax.set_yscale('symlog', linthresh=1)
         ax.set_title(LABEL.get(ds, ds), loc='left')
-        ax.set_xlabel('models fitted')
+        ax.set_xlabel('converged models')
     axes[0, 0].set_ylabel('lowest OFV so far − reference OFV')
-    cols = [('fits', 'models fitted'), ('hours', 'wall-clock hours'), ('cost_usd', 'LLM cost (USD)')]
+    cols = [('fits', 'models fitted'), ('hours', 'wall-clock hours'), ('cost_usd', 'LLM fees (USD)')]
     for ax, (col, lab) in zip(axes[1], cols):
         for i, ds in enumerate(names):
             for j, (cond, llm) in enumerate([(c, m) for c in COND for m in LLM]):

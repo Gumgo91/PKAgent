@@ -2,8 +2,9 @@
 
 Contents: runs (every run: prompts, transcripts with reasoning summaries, tool calls and results, fitted models,
 plots, reports), reference_fits and evaluation (incl. agent tests, stepwise baseline, drop-one evidence). The data
-files are not redistributed (folders named 'data' are left out); benchmarks/export_data.R and prepare_data.py recreate
-them from the R packages nlme and nlmixr2data. Local absolute paths are removed from all text files.
+files are not redistributed (folders named 'data' are left out), although the per-model diagnostics include the
+observations; benchmarks/export_data.R and prepare_data.py recreate them from the R packages nlme and nlmixr2data.
+Local absolute paths are removed from all text files.
 Writes dist/PKAgent_benchmark_archive.zip.
 Usage: python benchmarks/export_archive.py
 """
@@ -19,9 +20,12 @@ PREFIX = re.compile(r'[A-Za-z]:(?:\\\\|\\|/)Users(?:\\\\|\\|/)[^\\/"]+(?:\\\\|\\
 HOME = re.compile(r'[A-Za-z]:(?:\\\\|\\|/)Users(?:\\\\|\\|/)[^\\/"\s]+')
 
 
+LOCAL = re.compile(r'~(?:\\\\|\\|/)Desktop(?:\\\\|\\|/)(?:pkpy2(?:\\\\|\\|/)packages(?:\\\\|\\|/)pkpy2(?:\\\\|\\|/)src(?:\\\\|\\|/))?')
+
+
 def sanitize(text):
     text = PREFIX.sub('', text)
-    return HOME.sub('~', text)
+    return LOCAL.sub('', HOME.sub('~', text))       # PKPy2 source paths in console logs become 'pkpy2\...'
 
 
 def main():
@@ -41,7 +45,7 @@ def main():
                 n += 1
     with zipfile.ZipFile(out) as z:                       # check that no local path is left
         left = [i.filename for i in z.infolist() if Path(i.filename).suffix in TEXT
-                and re.search(r'Users[\\/]+[^\\/]+[\\/]+Desktop', z.read(i).decode('utf-8', 'replace'))]
+                and re.search(r'Users[\\/]+[^\\/]+[\\/]+Desktop|~[\\/]+Desktop', z.read(i).decode('utf-8', 'replace'))]
     print(f'wrote {out} ({n} files, {out.stat().st_size / 1e6:.1f} MB); files with local paths: {len(left)}')
 
 

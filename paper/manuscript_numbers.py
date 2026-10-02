@@ -6,6 +6,7 @@ Run benchmarks/evaluate.py, benchmarks/agent_tests.py (and effect_evidence.py, s
 """
 import datetime as dt
 import json
+from decimal import Decimal, ROUND_HALF_UP
 import math
 import sys
 from pathlib import Path
@@ -44,7 +45,8 @@ TIMES = {1: 'once', 2: 'twice', 3: 'three times'}
 def fmt(x, digits=1):
     if x is None or (isinstance(x, float) and np.isnan(x)):
         return 'NA'
-    return f'{x:,.{digits}f}'.replace('-', '−')                # typographic minus sign
+    q = Decimal(float(x)).quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP)   # 14.5 -> 15, not 14
+    return f'{q:,.{digits}f}'.replace('-', '−')                # typographic minus sign
 
 
 def med_range(v, digits=1):
@@ -82,15 +84,22 @@ def of_runs(k, total):
         return 'the run' if k == 1 else 'not the run'
     if total == 2:
         return {2: 'both runs', 1: 'one of the two runs', 0: 'neither run'}[k]
+    w = str if total >= 10 else word                            # numerals for both counts when one is 10 or more
     if k == total:
-        return f'all {word(total)} runs'
+        return f'all {w(total)} runs'
     if k == 0:
-        return f'none of the {word(total)} runs'
-    return f'{word(k)} of {word(total)} runs'
+        return f'none of the {w(total)} runs'
+    return f'{w(k)} of {w(total)} runs'
 
 
 def run_dir(r):
     return BENCH / 'runs' / r['dataset'] / r['condition'] / r['llm'] / r['rep']
+
+
+def effect_words(e):
+    """'V1~AGE' -> 'the age effect on V1' (abbreviated parameter names are defined in the text)."""
+    p, c = e.split('~')
+    return f"the {dict(AGE='age', WT='weight', APGR='Apgar score').get(c, c)} effect on {p}"
 
 
 def relationships(details, row):
@@ -267,7 +276,9 @@ def main():
             v = agent_test_values(ds, cond, relname, None if forms == 'last' else forms, llm, last=forms == 'last')
             suffix = f'_{llm}' if llm else ''
             n[f't_{tag}{suffix}'] = span(v, 1)
+            n[f't_{tag}{suffix}2'] = span(v, 2)
             n[f't_{tag}{suffix}_runs'] = len(v)
+            n[f't_{tag}{suffix}_runs_word'] = word(len(v))
             n[f't_{tag}{suffix}_below_inclusion'] = sum(x < 3.84 for x in v)
             n[f't_{tag}{suffix}_below_retention'] = sum(x < 6.63 for x in v)
     k_ind = n['t_pheno_none_apgar_indicator_runs']
@@ -279,7 +290,7 @@ def main():
         v = agent_test_values('pheno', 'none', 'V~APGR', ('categorical',), llm, context='final')
         n['t_pheno_none_apgar_final' + (f'_{llm}' if llm else '')] = span(v, 1)
     # linear vs Michaelis-Menten (like-for-like pairs) and two vs three compartments (best base models)
-    mm = [abs(x['ofv'][0] - x['ofv'][1]) for key, t in tests.items() if key[0] == 'oral_mm'
+    mm = [abs(x['ofv'][0] - x['ofv'][1]) for key, t in tests.items() if key[0] == 'oral_mm' and key[1] == 'none'
           for x in t['structural_tests']
           if {x['structures'][0][0], x['structures'][1][0]} == {'pk', 'michaelis_menten'}
           and x['structures'][0][1] == x['structures'][1][1] == 1 and not any(s[2] for s in x['structures'])]
@@ -298,9 +309,14 @@ def main():
     dose = [x['delta_ofv'] for key, t in tests.items() if key[0] == 'oral_mm' for x in t['covariate_tests']
             if x['relationship'].endswith('~DOSE') and not x['relationship'].startswith('CL')]
     n['oral_dose'] = span(dose, 1)
-    n['oral_dose_runs'] = of_runs(sum(any(x['relationship'].endswith('~DOSE') and not x['relationship'].startswith('CL')
-                                          for x in t['covariate_tests']) for key, t in tests.items() if key[0] == 'oral_mm'),
-                                  sum(1 for key in tests if key[0] == 'oral_mm'))
+    dose_runs = [key for key, t in tests.items() if key[0] == 'oral_mm'
+                 and any(x['relationship'].endswith('~DOSE') and not x['relationship'].startswith('CL')
+                         for x in t['covariate_tests'])]
+    n['oral_dose_runs'] = of_runs(len(dose_runs), sum(1 for key in tests if key[0] == 'oral_mm'))
+    n['oral_dose_params'] = sorted({x['relationship'].split('~')[0] for key in dose_runs
+                                    for x in tests[key]['covariate_tests'] if x['relationship'].endswith('~DOSE')})
+    if dose_runs and {k[2] for k in dose_runs} == {'gpt'}:
+        n['oral_dose_all_gpt'] = 'yes'
     v1 = {llm: agent_test_values('remifentanil', 'none', 'V1~AGE', llm=llm, last=True)
                + agent_test_values('remifentanil', 'knowledge', 'V1~AGE', llm=llm, last=True) for llm in LLM}
     for llm in LLM:
@@ -341,9 +357,26 @@ def main():
                                                 for _, r in late.iterrows()) or 'none'
     boot_runs = [b for b in prof['bootstrap'] if b != '–']
     n['bootstrap_runs'] = word(len(boot_runs))
-    remi_boot = [b for b, ds in zip(prof['bootstrap'], prof['dataset']) if ds == 'remifentanil' and b != '–']
-    n['bootstrap_remi'] = ' and '.join(remi_boot) or 'none'
-    dirs = [run_dir(r) for _, r in main_grid.iterrows()]
+    remi_boot = [b for key, t in tests.items() if key[0] == 'remifentanil' for b in t['bootstraps']]
+    n['bootstrap_remi_n'] = word(len(remi_boot))
+    n['bootstrap_remi_requested'] = span([b['requested'] for b in remi_boot], 0)
+    n['bootstrap_remi_completed'] = span([b['completed'] for b in remi_boot], 0)
+    n['bootstrap_remi_converged'] = span([b['converged'] for b in remi_boot], 0)
+    all_boot = [b for t in tests.values() for b in t['bootstraps']]
+    n['bootstrap_n'] = len(all_boot)
+    n['bootstrap_complete'] = word(sum(b['completed'] >= b['requested'] for b in all_boot))
+    oral_boot = [b for key, t in tests.items() if key[0] == 'oral_mm' for b in t['bootstraps']]
+    n['bootstrap_oral_requested'] = span([b['requested'] for b in oral_boot], 0)
+    n['bootstrap_oral_completed'] = span([b['completed'] for b in oral_boot], 0)
+    # fit times per dataset (the 36 runs, as the run times, fees and fit counts reported with them)
+    for ds in LABEL:
+        secs_ds = [json.loads(p.read_text(encoding='utf-8')).get('seconds') or 0
+                   for _, r in main_grid[main_grid['dataset'] == ds].iterrows()
+                   for p in run_dir(r).glob('models/*/summary.json')]
+        n[f'{ds}_fit_median_min'] = fmt(float(np.median(secs_ds)) / 60, 0)
+        n[f'{ds}_fit_max_min'] = fmt(max(secs_ds) / 60, 0)
+        n[f'{ds}_n_subjects'] = int(subjects_of(run_dir(runs[runs['dataset'] == ds].iloc[0])).shape[0])
+    dirs = [run_dir(r) for _, r in runs.iterrows()]               # the Methods describe all runs
     secs = [json.loads(p.read_text(encoding='utf-8')).get('seconds') or 0
             for d_ in dirs for p in d_.glob('models/*/summary.json')]
     n['max_fit_minutes'] = fmt(max(secs) / 60, 0) if secs else 'NA'
@@ -377,8 +410,16 @@ def main():
             for out in vpc.values():
                 for b in (out or {}).get('bins', []):
                     misses += [(b['time'], q) for q in ('p5', 'p50', 'p95') if not b[q]['inside']]
-        n[f'{ds}_vpc_miss_times'] = span([t for t, _ in misses], 0)
+        n[f'{ds}_vpc_miss_times'] = span([t for t, q in misses if q == 'p95'], 0)
         n[f'{ds}_vpc_miss_upper'] = f"{sum(q == 'p95' for _, q in misses)} of {len(misses)}"
+        # the same VPCs of the PKPy2 fit of the reference model (benchmarks/reference_vpc.py)
+        rv = BENCH / 'reference_fits' / ds / 'vpc.json'
+        if rv.exists():
+            rv = json.loads(rv.read_text(encoding='utf-8'))
+            n[f'reffit_{ds}_vpc'] = fmt(rv['plain']['inside_percent'], 0)
+            n[f'reffit_{ds}_pcvpc'] = fmt(rv['prediction_corrected']['inside_percent'], 0)
+            if ds == 'remifentanil':
+                n['reffit_remifentanil_vpc_upper'] = f"{rv['plain']['misses_p95']} of {rv['plain']['misses']}"
 
     # phenobarbital weight exponents without knowledge, and identical reference relationships within cells
     for llm in LLM:
@@ -420,6 +461,51 @@ def main():
     n['apgar_conc_low'] = fmt(c_low, 1)
     n['apgar_conc_agents'] = span([c_low / x for x in lowv if x], 1)
     n['apgar_effect_pct'] = fmt(est['APGR_LT5_fractional_increase_in_V'] * 100, 0)
+    # oral MM: residual model of the final models (the simulation used exponential error)
+    og = main_grid[main_grid['dataset'] == 'oral_mm']
+    logn = []
+    for _, r in og.iterrows():
+        res_ = (json.loads((run_dir(r) / 'results.json').read_text(encoding='utf-8'))['final_model']['specification']
+                .get('residual') or {})
+        logn.append('lognormal' in json.dumps(res_))
+    og = og.assign(lognormal=logn)
+    n['oral_mm_lognormal'] = of_runs(int(og['lognormal'].sum()), len(og))
+    n['oral_mm_lognormal_llm'] = ', '.join(sorted({LLM[x] for x in og.loc[og['lognormal'], 'llm']}))
+    n['oral_mm_lognormal_dofv'] = span(og.loc[og['lognormal'], 'delta_ofv_vs_reference'], 1)
+    fitted_logn = [any('lognormal' in json.dumps(json.loads(sp.read_text(encoding='utf-8')).get('residual'))
+                       for sp in run_dir(r).glob('models/*/spec.json')) for _, r in og.iterrows()]
+    if fitted_logn == list(og['lognormal']):
+        n['oral_mm_lognormal_when_fitted'] = 'yes'         # every run that fitted log-normal error selected it
+    n['oral_mm_other_dofv'] = span(og.loc[~og['lognormal'], 'delta_ofv_vs_reference'], 1)
+    # remifentanil: what a quartered V3 changes in older subjects (published parameters, LBM 55 kg): 50% and 80%
+    # decrement times after 1- to 10-hour infusions
+    from scipy.linalg import expm
+
+    def minto(age, lbm=55.):
+        return dict(V1=5.1 - .0201 * (age - 40) + .072 * (lbm - 55), V2=9.82 - .0811 * (age - 40) + .108 * (lbm - 55),
+                    V3=5.42, CL=2.6 - .0162 * (age - 40) + .0191 * (lbm - 55), Q2=2.05 - .0301 * (age - 40),
+                    Q3=.076 - .00113 * (age - 40))
+
+    def decrement(p, minutes, frac, dt=.01):
+        A = np.array([[-(p['CL'] + p['Q2'] + p['Q3']) / p['V1'], p['Q2'] / p['V2'], p['Q3'] / p['V3']],
+                      [p['Q2'] / p['V1'], -p['Q2'] / p['V2'], 0.], [p['Q3'] / p['V1'], 0., -p['Q3'] / p['V3']]])
+        x = np.linalg.solve(A, (expm(A * minutes) - np.eye(3)) @ np.array([1., 0., 0.]))  # unit-rate infusion
+        c0, step, t = x[0] / p['V1'], expm(A * dt), 0.
+        while x[0] / p['V1'] > (1 - frac) * c0:
+            x, t = step @ x, t + dt
+        return t, c0
+    ratio_q3, diff, conc = [], [], []
+    for age in (65, 75, 85):
+        p = minto(age)
+        ratio_q3.append(100 * p['Q3'] / p['CL'])
+        for hours in (1, 4, 10):
+            for frac in (.5, .8):
+                (a, ca), (b, cb) = decrement(p, 60 * hours, frac), decrement(dict(p, V3=p['V3'] / 4), 60 * hours, frac)
+                diff.append(abs(a - b))
+                conc.append(abs(cb / ca - 1) * 100)
+    n['v3_q3_cl_pct'] = span(ratio_q3, 0)
+    n['v3_decrement_diff_max'] = fmt(max(diff), 2)
+    n['v3_conc_diff_max'] = fmt(max(conc), 0)
     # oral MM: the Michaelis constant against the nominal and the realized (subset) value
     km_real = 232.
     n['oral_mm_KM_ratio_span'] = span(main_grid.loc[main_grid['dataset'] == 'oral_mm', 'ratio_KM_median'], 2)
@@ -454,21 +540,45 @@ def main():
         n['rk_v3_any'] = of_runs(sum(bool(kept_v3(f)) for _, f in rk), len(rk))
         n['rk_v3age'] = of_runs(sum(('V3', 'AGE') in f for _, f in rk), len(rk))
         n['rk_v3lbm'] = of_runs(sum(('V3', 'LBM') in f for _, f in rk), len(rk))
-        support, weak = [], []
+        support, weak, untested = [], [], 0
         for r, f in rk:
             t = tests.get((r['dataset'], r['condition'], r['llm'], r['rep']), {})
+            tested_any = False
             for e in kept_v3(f):
                 v = [x['delta_ofv'] for x in t.get('covariate_tests', []) if x['relationship'] == '~'.join(e)]
                 if v:
+                    tested_any = True
                     support.append(max(v))
                     if max(v) < 6.63:
                         weak.append((r['llm'], e, max(v)))
+            untested += bool(kept_v3(f)) and not tested_any
         n['rk_v3_support'] = span(support, 1)
+        n['rk_v3_strong_support'] = span([v for v in support if v >= 6.63], 1)
+        n['rk_v3_untested'] = word(untested)
         if weak:
             n['rk_v3_weak'] = 'yes'
             n['rk_v3_weak_sentence'] = '; '.join(
-                f"one {LLM[llm]} run kept an effect of {e[1].replace('AGE', 'age')} on V3 that failed its own retention "
-                f"criterion (OFV change {fmt(v, 1)})" for llm, e, v in weak)
+                f"one {LLM[llm]} run retained as analyst-supported an effect of {e[1].replace('AGE', 'age')} on V3 that "
+                f"failed its own retention criterion (OFV change {fmt(v, 1)})" for llm, e, v in weak)
+            n['rk_v3_weak_short'] = '; '.join(f"{e[1].replace('AGE', 'age')}, OFV change {fmt(v, 1)}"
+                                              for llm, e, v in weak)
+        # the age effect on V1 with the statement: runs that tested it alone (weak support reported: see check_claims)
+        v1k = [(key, x) for key, t in tests.items() if key[:2] == ('remifentanil', 'knowledge')
+               for x in t['covariate_tests'] if x['relationship'] == 'V1~AGE']
+        n['rk_v1age_tested'] = word(len({key for key, _ in v1k}))
+        untested_v1 = [key for key in tests if key[:2] == ('remifentanil', 'knowledge') and key not in {k for k, _ in v1k}]
+        n['rk_v1age_untested'] = word(len(untested_v1))
+        if untested_v1 and {k[2] for k in untested_v1} == {'claude'}:
+            n['rk_v1age_untested_llm'] = LLM['claude']
+    # remifentanil V3: the only typical value outside 0.80-1.25 (and the reason typical values rarely agree)
+    rg = main_grid[main_grid['dataset'] == 'remifentanil']
+    v3 = rg['ratio_V3_median'].dropna()
+    n['remi_v3_agree'] = f"{int(((v3 >= .8) & (v3 <= 1.25)).sum())} of {len(v3)}"
+    n['remi_v3_span'] = span(v3, 2)
+    others_ok = all(((rg[f'ratio_{c}_median'] >= .8) & (rg[f'ratio_{c}_median'] <= 1.25)).all()
+                    for c in ('CL', 'V1', 'V2', 'Q2', 'Q3'))
+    if others_ok:
+        n['remi_others_agree'] = 'yes'
         age_runs = [r for r, f in rk if ('V3', 'AGE') in f]
         n['rk_v3age_ratio'] = span([r['ratio_V3_median'] for r in age_runs], 2)
         v3e = [subgroup_ratio(r, 'V3', lambda s: s['AGE'] >= 65) for r in age_runs]
@@ -482,7 +592,7 @@ def main():
                 any_spec |= any(c['covariate'] == 'LBM' and c['parameter'] in ('Q2', 'Q3') for c in cs)
             tested_q += any_spec
         n['rk_lbm_q_tested'] = of_runs(tested_q, len(rk))
-        n['rk_lbm_q_kept'] = of_runs(kept_q, len(rk))
+        n['rk_lbm_q_kept'] = none_of(kept_q)
 
     # direct comparisons of linear and exponential covariate forms (same relationships and parameter count)
     cmp_ = []
@@ -546,7 +656,7 @@ def main():
         else:
             n['strong_missed_desc'] = '; '.join(
                 f"{word(1)} {LLM[m['llm']]} {LABEL[m['dataset']].lower()} run omitted "
-                f"{', '.join(e.replace('~', '–') for e in m['missing'])} after {word(m['fits'])} fits"
+                f"{', '.join(effect_words(e) for e in m['missing'])} after {word(m['fits'])} fits"
                 f" (median {fmt(m['fit_minutes'], 0)} minutes per fit, {fmt(m['hours_left'], 1)} hours left)"
                 for m in missed)
 
@@ -592,9 +702,26 @@ def main():
                 if with_wt and no_wt:
                     gain.append(min(no_wt) - min(with_wt))
                 kept += 'no weight effect' not in str(r['misleading_followed'])
-                coefs = [ce['coefficient'] for m, s_, su in ms for ce in su.get('covariate_effects', [])
-                         if ce['effect'].startswith('CL~') and 'APG' in ce['effect']]
-                opposite += bool(coefs) and max(coefs) > 0 and not any(c < -1e-6 for c in coefs)
+                # Apgar effects on CL estimated without a bound: is a low score linked to higher CL (opposite to the
+                # statement)? Indicator columns of a low score: positive coefficient; the continuous score: negative.
+                res_ = json.loads((run_dir(r) / 'results.json').read_text(encoding='utf-8'))
+                expr = {(t.get('column') or t.get('name')): t.get('expression', '') for t in res_.get('data_transformations', [])}
+                signs = []
+                for m, s_, su in ms:
+                    est_ = {ce['effect'].split('=')[0]: ce['coefficient'] for ce in su.get('covariate_effects', [])}
+                    for c in s_['covariates']:
+                        co = c.get('coefficient') or {}
+                        source = 'APGR' if c['covariate'] == 'APGR' else ('APGR' if 'APGR' in expr.get(c['covariate'], '')
+                                                                          else None)
+                        if c['parameter'] != 'CL' or source is None or co.get('fixed') \
+                                or co.get('lower') is not None or co.get('upper') is not None:
+                            continue
+                        b_ = est_.get(f"CL~{c['covariate']}")
+                        if b_ is None:
+                            continue
+                        low_indicator = c['covariate'] != 'APGR' and '<' in expr.get(c['covariate'], '')
+                        signs.append(b_ > 0 if low_indicator else b_ < 0)
+                opposite += bool(signs) and all(signs)
                 t = tests_all.get((r['dataset'], r['condition'], r['llm'], r['rep']), {})
                 cl_tests += [x['delta_ofv'] for x in t.get('covariate_tests', []) if x['relationship'] == 'CL~APGR']
             n['pm_runs'] = of_runs(len(pm), len(pm))
@@ -606,6 +733,12 @@ def main():
             n['pm_apgar_cl_tests'] = span(cl_tests, 1)
         if len(om):
             gain, two = [], []
+            om_second, om_final_daic, om_rse, om_fixed, om_no_se, om_dropped = [], [], [], 0, 0, []
+
+            def _rest_residual(sp):
+                r_ = sp.get('residual') or {}
+                return sorted(r_) if set(r_) <= {'proportional', 'additive', 'lognormal'} \
+                    else sorted((o, sorted(v)) for o, v in r_.items())
             for _, r in om.iterrows():
                 ms = models_of(r)
                 lin = [m['ofv'] for m, s_, _ in ms if s_['structure'].get('type', 'pk') == 'pk']
@@ -619,12 +752,59 @@ def main():
                 a2 = [m['aic'] for m, s_, _ in ms if s_['structure'].get('type') == 'michaelis_menten'
                       and s_['structure'].get('compartments', 1) == 2 and m.get('aic') is not None]
                 if a1 and a2:
-                    two.append(min(a1) - min(a2))
+                    two.append(min(a2) - min(a1))                    # AIC of two minus one compartment
+                # the final (two-compartment) model against the one-compartment model differing only in the
+                # compartments, against the best one-compartment model of the run, and its peripheral parameters
+                res_ = json.loads((run_dir(r) / 'results.json').read_text(encoding='utf-8'))
+                fid = res_['final_model']['model_id']
+                fin = next(((m, s_, su) for m, s_, su in ms if m['model_id'] == fid), None)
+                if fin and fin[1]['structure'].get('compartments', 1) == 2:
+                    fm_, fs_, fsu = fin
+                    def iiv1(sp):
+                        return sorted({'V1': 'V'}.get(k, k) for k in sp.get('iiv', {}) if k not in ('Q', 'V2'))
+                    pair = [m['ofv'] - fm_['ofv'] for m, s_, _ in ms if s_['structure'].get('type') == 'michaelis_menten'
+                            and s_['structure'].get('compartments', 1) == 1 and iiv1(s_) == iiv1(fs_)
+                            and _rest_residual(s_) == _rest_residual(fs_) and not s_['covariates'] and not fs_['covariates']]
+                    if pair:
+                        om_second.append(min(pair))                 # against the best such model
+                    if a1:
+                        om_final_daic.append(fm_['aic'] - min(a1))
+                    for q in fsu.get('parameters', []):
+                        if q['parameter'] in ('Q', 'V2'):
+                            if q.get('fixed'):
+                                om_fixed += 1
+                            elif q.get('rse_percent') is not None:
+                                om_rse.append(q['rse_percent'])
+                    om_no_se += fsu.get('uncertainty_status') != 'computed'
+                    # variability terms supported by the data but left out of the final model
+                    for m, s_, _ in ms:
+                        if s_['structure'] == fs_['structure'] and _rest_residual(s_) == _rest_residual(fs_) \
+                                and set(s_.get('iiv', {})) > set(fs_.get('iiv', {})) \
+                                and len(set(s_['iiv']) - set(fs_['iiv'])) == 1 and fm_['ofv'] - m['ofv'] >= 6.63:
+                            om_dropped.append((sorted(set(s_['iiv']) - set(fs_['iiv']))[0], fm_['ofv'] - m['ofv']))
+            # control: runs without the statement that compared one and two compartments (MM, two parameters)
+            ctrl = [(key, c['delta_ofv']) for key, t in tests.items() if key[:2] == ('oral_mm', 'none')
+                    for c in t['compartment_tests'] if c['compartments'] == [1, 2] and c.get('type') == 'michaelis_menten'
+                    and c['extra_parameters'] == 2]
+            n['om_control_runs'] = word(len({k for k, _ in ctrl}))
+            n['om_control_dofv'] = span([v for _, v in ctrl], 1)
+            n['om_control_all_one'] = 'yes' if all(
+                runs[(runs['dataset'] == 'oral_mm') & (runs['condition'] == 'none') & (runs['llm'] == k[2])
+                     & (runs['rep'] == k[3])]['compartments'].iloc[0] == 1 for k, _ in ctrl) else 'no'
             n['om_runs'] = of_runs(len(om), len(om))
             n['om_mm_kept'] = of_runs(int((om['elimination'] == 'Michaelis-Menten').sum()), len(om))
             n['om_mm_gain'] = span(gain, 0)
             n['om_2cmt_adopted'] = of_runs(int((om['compartments'] == 2).sum()), len(om))
             n['om_2cmt_daic'] = span(two, 1)
+            n['om_2cmt_second'] = span(om_second, 1)
+            n['om_2cmt_final_daic'] = span(om_final_daic, 1)
+            n['om_2cmt_rse'] = span(om_rse, 0)
+            n['om_2cmt_fixed'] = word(om_fixed)
+            n['om_2cmt_no_se'] = word(om_no_se)
+            if om_dropped:
+                n['om_dropped_iiv'] = '; '.join(f'interindividual variability of {k} (OFV decrease {fmt(v, 1)})'
+                                                for k, v in om_dropped)
+                n['om_dropped_runs'] = word(len(om_dropped))
         n['misleading_runs'] = len(mis)
 
     # remifentanil: backward elimination from the reference model (benchmarks/backward_baseline.py)
@@ -632,12 +812,70 @@ def main():
     if bb_path.exists():
         bb = json.loads(bb_path.read_text(encoding='utf-8')).get('remifentanil')
         if bb and 'removed' in bb:
-            n['backward_remifentanil_removed'] = ', '.join(e.replace('~', '–') for e in bb['removed']) or 'nothing'
+            n['backward_remifentanil_removed'] = ', '.join(effect_words(e) for e in bb['removed']) or 'nothing'
             last = bb['history'][-1]['tests']
             kept = [v for k, v in last.items() if v is not None and k not in bb['removed']]
             n['backward_remifentanil_min'] = fmt(min(kept), 1) if kept else 'NA'
             if bb['removed'] == ['V1~AGE']:
                 n['baseline_remi_agrees'] = 'yes'
+            # runs without knowledge whose final relationships equal those of the deterministic baseline
+            base = {'remifentanil': set(REFERENCE['remifentanil']) - {tuple(e.split('~')) for e in bb['removed']}}
+            if 'pheno' in scm:
+                base['pheno'] = {(x.split('(')[0].split('~')[0], x.split('(')[0].split('~')[1].split('_')[0].split('=')[0])
+                                 for x in scm['pheno']['included']}
+            for ds, b in base.items():
+                sub = [set(f) for f, (_, r) in zip(rel, runs.iterrows()) if r['dataset'] == ds and r['condition'] == 'none']
+                n[f'baseline_match_{ds}'] = of_runs(sum(s == b for s in sub), len(sub))
+
+    # ------------------------------------------------------------------ robustness of single-start fits (all runs)
+    def cov_sig(sp):
+        return tuple(sorted((str((c['parameter'], c['covariate'], c['form'], c.get('center'), c.get('level'),
+                                  (c.get('coefficient') or {}).get('value') if (c.get('coefficient') or {}).get('fixed')
+                                  else None, (c.get('coefficient') or {}).get('lower'),
+                                  (c.get('coefficient') or {}).get('upper'))) for c in sp.get('covariates', []))))
+
+    def fixed_params(sp):
+        return tuple(sorted((k, v.get('value')) for k, v in sp.get('parameters', {}).items() if (v or {}).get('fixed')))
+
+    groups, inversions = {}, []
+    for _, r in runs.iterrows():
+        res = json.loads((run_dir(r) / 'results.json').read_text(encoding='utf-8'))
+        conv = {}
+        for m in res['models']:
+            if m.get('status') != 'converged' or m.get('ofv') is None:
+                continue
+            sp = json.loads((run_dir(r) / 'models' / m['model_id'] / 'spec.json').read_text(encoding='utf-8'))
+            conv[m['model_id']] = (m, sp)
+            groups.setdefault((r['dataset'], _rest(sp), cov_sig(sp), fixed_params(sp)), []).append(
+                (m['ofv'], json.dumps(sp.get('parameters'), sort_keys=True)))
+        # a converged model with one more residual component or IIV term but a higher OFV than its submodel
+        for a, (ma, sa) in conv.items():
+            for b, (mb, sb) in conv.items():
+                if a == b or cov_sig(sa) != cov_sig(sb) or fixed_params(sa) != fixed_params(sb) \
+                        or sa.get('structure') != sb.get('structure') \
+                        or sorted(map(sorted, sa.get('iiv_blocks', []))) != sorted(map(sorted, sb.get('iiv_blocks', []))):
+                    continue
+                def comps(sp):
+                    r_ = sp.get('residual') or {}
+                    return {('', k) for k in r_} if set(r_) <= {'proportional', 'additive', 'lognormal'} \
+                        else {(o, k) for o, v in r_.items() for k in v}
+                ca, cb, ia, ib = comps(sa), comps(sb), set(sa.get('iiv', {})), set(sb.get('iiv', {}))
+                one_more = (ia == ib and ca < cb and len(cb - ca) == 1) or (ca == cb and ia < ib and len(ib - ia) == 1)
+                if one_more and mb['ofv'] > ma['ofv'] + 1:
+                    inversions.append(mb['ofv'] - ma['ofv'])
+    spreads = []
+    for v in groups.values():
+        if len({x[1] for x in v}) > 1:
+            spreads.append(max(x[0] for x in v) - min(x[0] for x in v))
+        else:
+            assert max(x[0] for x in v) - min(x[0] for x in v) < 1e-6      # identical specifications, identical OFV
+    spreads.sort(reverse=True)
+    n['start_groups'] = len(spreads)
+    n['start_spread_max'] = fmt(spreads[0], 0) if spreads else 'NA'
+    n['start_spread_next'] = fmt(spreads[1], 0) if len(spreads) > 1 else 'NA'
+    n['start_spread_over1'] = word(sum(x > 1 for x in spreads))
+    n['nested_inversions'] = word(len(set(round(x, 3) for x in inversions)))
+    n['nested_inversion_max'] = fmt(max(inversions), 0) if inversions else 'NA'
 
     # ------------------------------------------------------------------ dates and recall
     started = sorted(json.loads((run_dir(r) / 'run.json').read_text(encoding='utf-8'))['started'][:10]

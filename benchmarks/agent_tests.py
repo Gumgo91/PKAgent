@@ -53,6 +53,13 @@ def relationships(spec, transformations, cols, ref_names):
 def rest(spec):
     """Everything of a specification except its covariates (for 'otherwise identical')."""
     s = {k: v for k, v in spec.items() if k not in ('covariates', 'name', 'parent', 'parameters', 'defaulted')}
+    # schema defaults written out or omitted describe the same structure (e.g. "linear_clearance": false)
+    st = {k: v for k, v in (spec.get('structure') or {}).items() if v is not None and v is not False}
+    if st.get('type') == 'pk':
+        st.pop('type')
+    if st.get('compartments') == 1:
+        st.pop('compartments')
+    s['structure'] = st
     s['iiv'] = sorted(spec.get('iiv', {}))
     s['iiv_blocks'] = sorted(sorted(b) for b in spec.get('iiv_blocks', []))
     s['residual'] = {k: sorted(v) for k, v in (spec.get('residual') or {}).items()}
