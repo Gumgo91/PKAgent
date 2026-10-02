@@ -240,34 +240,40 @@ def main():
                                                for v in map(float, str(rr).split('-', 1))], 2)
 
     # ------------------------------------------------------------------ the agents' own tests (agent_tests.py)
-    def agent_test_values(ds, cond, relname, forms=None, llm=None, context=False):
+    def agent_test_values(ds, cond, relname, forms=None, llm=None, context=False, last=False):
         """Per run: the largest evidence (ΔOFV) the agent obtained for a relationship (optionally only in the final
         model's covariate context, or only for some functional forms)."""
         out = []
         for key, t in tests.items():
             if key[0] != ds or key[1] != cond or (llm and key[2] != llm):
                 continue
-            v = [x['delta_ofv'] for x in t['covariate_tests'] if x['relationship'] == relname
-                 and (forms is None or x['form'] in forms) and (not context or x.get('final_context'))
-                 and (context != 'final' or x.get('final_stochastic'))]
-            if v:
-                out.append(max(v))
+            sel = [x for x in t['covariate_tests'] if x['relationship'] == relname
+                   and (forms is None or x['form'] in forms) and (not context or x.get('final_context'))
+                   and (context != 'final' or x.get('final_stochastic'))]
+            if sel and last:
+                out.append(max(sel, key=lambda x: max(x['with_model'], x['without_model']))['delta_ofv'])
+            elif sel:
+                out.append(max(x['delta_ofv'] for x in sel))
         return out
     for ds, cond, relname, forms, tag in [
             ('pheno', 'none', 'V~APGR', ('categorical',), 'pheno_none_apgar_indicator'),
             ('pheno', 'none', 'V~APGR', None, 'pheno_none_apgar_any'),
             ('pheno', 'knowledge', 'V~APGR', ('categorical',), 'pheno_knowledge_apgar'),
-            ('remifentanil', 'none', 'V1~AGE', None, 'remi_none_v1age'),
-            ('remifentanil', 'knowledge', 'V1~AGE', None, 'remi_knowledge_v1age'),
+            ('remifentanil', 'none', 'V1~AGE', 'last', 'remi_none_v1age'),
+            ('remifentanil', 'knowledge', 'V1~AGE', 'last', 'remi_knowledge_v1age'),
             ('remifentanil', 'knowledge', 'V3~AGE', None, 'remi_knowledge_v3age'),
             ('remifentanil', 'none', 'V3~AGE', None, 'remi_none_v3age')]:
         for llm in (None, 'gpt', 'claude'):
-            v = agent_test_values(ds, cond, relname, forms, llm)
+            v = agent_test_values(ds, cond, relname, None if forms == 'last' else forms, llm, last=forms == 'last')
             suffix = f'_{llm}' if llm else ''
             n[f't_{tag}{suffix}'] = span(v, 1)
             n[f't_{tag}{suffix}_runs'] = len(v)
             n[f't_{tag}{suffix}_below_inclusion'] = sum(x < 3.84 for x in v)
             n[f't_{tag}{suffix}_below_retention'] = sum(x < 6.63 for x in v)
+    k_ind = n['t_pheno_none_apgar_indicator_runs']
+    n['t_pheno_none_apgar_indicator_runs_word'] = word(k_ind)
+    k_other = len(main_grid[(main_grid['dataset'] == 'pheno') & (main_grid['condition'] == 'none')]) - k_ind
+    n['pheno_apgar_cont_only'] = 'other run' if k_other == 1 else f'other {word(k_other)} runs'
     # the Apgar indicator in the covariate context of the final model (Claude Opus 5.5: with a CL-V correlation)
     for llm in (None, 'gpt', 'claude'):
         v = agent_test_values('pheno', 'none', 'V~APGR', ('categorical',), llm, context='final')
@@ -295,8 +301,8 @@ def main():
     n['oral_dose_runs'] = of_runs(sum(any(x['relationship'].endswith('~DOSE') and not x['relationship'].startswith('CL')
                                           for x in t['covariate_tests']) for key, t in tests.items() if key[0] == 'oral_mm'),
                                   sum(1 for key in tests if key[0] == 'oral_mm'))
-    v1 = {llm: [x['delta_ofv'] for key, t in tests.items() if key[0] == 'remifentanil' and key[2] == llm
-                for x in t['covariate_tests'] if x['relationship'] == 'V1~AGE'] for llm in LLM}
+    v1 = {llm: agent_test_values('remifentanil', 'none', 'V1~AGE', llm=llm, last=True)
+               + agent_test_values('remifentanil', 'knowledge', 'V1~AGE', llm=llm, last=True) for llm in LLM}
     for llm in LLM:
         n[f't_remi_v1age_all_{llm}'] = span(v1[llm], 1)
     # tool use, time budget, bootstrap, fits
@@ -562,6 +568,18 @@ def main():
         n[f'scm_{ds}_removed'] = ', '.join(short(h['removed']) for h in d['history'] if h['step'] == 'backward remove') \
             or 'none'
 
+    # remifentanil: backward elimination from the reference model (benchmarks/backward_baseline.py)
+    bb_path = EVAL / 'backward_baseline.json'
+    if bb_path.exists():
+        bb = json.loads(bb_path.read_text(encoding='utf-8')).get('remifentanil')
+        if bb and 'removed' in bb:
+            n['backward_remifentanil_removed'] = ', '.join(e.replace('~', '–') for e in bb['removed']) or 'nothing'
+            last = bb['history'][-1]['tests']
+            kept = [v for k, v in last.items() if v is not None and k not in bb['removed']]
+            n['backward_remifentanil_min'] = fmt(min(kept), 1) if kept else 'NA'
+            if bb['removed'] == ['V1~AGE']:
+                n['baseline_remi_agrees'] = 'yes'
+
     # ------------------------------------------------------------------ dates and recall
     started = sorted(json.loads((run_dir(r) / 'run.json').read_text(encoding='utf-8'))['started'][:10]
                      for _, r in runs.iterrows())
@@ -576,6 +594,9 @@ def main():
         ks = [k for k in recall if k[2] == llm]
         n[f'recall_{llm}'] = of_runs(sum(bool(recall[k]) for k in ks), len(ks))
         n[f'recall_{llm}_total'] = len(ks)
+        for cond in ('none', 'knowledge'):
+            kc = [k for k in ks if k[1] == cond]
+            n[f'recall_{llm}_{cond}'] = of_runs(sum(bool(recall[k]) for k in kc), len(kc))
     (BUILD / 'recall.json').write_text(json.dumps({'/'.join(k): v for k, v in recall.items()}, indent=1,
                                                   ensure_ascii=False), encoding='utf-8')
     (BUILD / 'numbers.json').write_text(json.dumps(n, indent=1, ensure_ascii=False), encoding='utf-8')

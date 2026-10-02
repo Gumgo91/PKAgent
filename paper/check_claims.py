@@ -125,6 +125,17 @@ def checks():
     check('oral MM: MM vs linear about 800 or more', float(mm) >= 750, numbers.get('mm_vs_linear'))
     check('remifentanil V1~AGE is the weakest reference relationship (drop-one)',
           'evidence_remifentanil_V1~AGE' in numbers and float(numbers['evidence_remifentanil_V1~AGE']) < 3.84)
+    import re as _re
+    gr = runs[(runs['dataset'] == 'remifentanil') & (runs['llm'] == 'gpt')]
+    check('GPT remifentanil reports: backward checks not all repeated after the final covariance change',
+          all(_re.search(r'repeat|complete backward', report_text(r), re.I) for _, r in gr.iterrows()))
+    check('all runs near the time limit are the GPT remifentanil runs',
+          numbers.get('runs_near_time_limit') == {6: 'six', 9: 'nine', 3: 'three'}.get(len(gr), str(len(gr))))
+    check('Claude recalled the published datasets in every run', numbers.get('recall_claude', '').startswith('all'))
+    check('GPT made no recall statement without knowledge',
+          numbers.get('recall_gpt_none', '').startswith(('none', 'neither', 'not')))
+    check('GPT recall statements name Minto', all('minto' in h['term'].lower() for k, v in json.loads(
+        (HERE / 'build' / 'recall.json').read_text(encoding='utf-8')).items() if '/gpt/' in k for h in v))
     return out
 
 
