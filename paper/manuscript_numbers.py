@@ -462,9 +462,16 @@ def main():
         n['rk_v3age_ratio'] = span([r['ratio_V3_median'] for r in age_runs], 2)
         v3e = [subgroup_ratio(r, 'V3', lambda s: s['AGE'] >= 65) for r in age_runs]
         n['rk_v3age_elderly'] = span([x for x in v3e if x is not None], 2)
-        lbmq = [x['delta_ofv'] for r, f in rk for x in tests.get((r['dataset'], r['condition'], r['llm'], r['rep']), {})
-                .get('covariate_tests', []) if x['relationship'] in ('Q2~LBM', 'Q3~LBM')]
-        n['rk_lbm_q_max'] = fmt(max(lbmq), 1) if lbmq else 'NA'
+        tested_q = kept_q = 0
+        for r, f in rk:
+            kept_q += any(e in f for e in (('Q2', 'LBM'), ('Q3', 'LBM')))
+            any_spec = False
+            for sp in run_dir(r).glob('models/*/spec.json'):
+                cs = json.loads(sp.read_text(encoding='utf-8')).get('covariates', [])
+                any_spec |= any(c['covariate'] == 'LBM' and c['parameter'] in ('Q2', 'Q3') for c in cs)
+            tested_q += any_spec
+        n['rk_lbm_q_tested'] = of_runs(tested_q, len(rk))
+        n['rk_lbm_q_kept'] = of_runs(kept_q, len(rk))
 
     # functional forms of age and LBM in the remifentanil final models without knowledge
     forms = {'AGE': set(), 'LBM': set()}

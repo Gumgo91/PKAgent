@@ -92,18 +92,6 @@ def checks():
         check('the run that omitted a strong effect cited the time budget', ok)
     check('remifentanil with the statement: every run kept an effect on V3',
           numbers.get('rk_v3_any', '').startswith(('both', 'all')))
-    rk = runs[(runs['dataset'] == 'remifentanil') & (runs['condition'] == 'knowledge')]
-    ok = True
-    for _, r in rk.iterrows():
-        fc = covs(results(r)['final_model']['specification'])
-        ok &= not any(x[1] == 'LBM' and x[0] in ('Q2', 'Q3') for x in fc)
-        t = tests[(r['dataset'], r['condition'], r['llm'], r['rep'])]
-        tested = any(x['relationship'] in ('Q2~LBM', 'Q3~LBM') for x in t['covariate_tests'])
-        specs = [covs(json.loads(p.read_text(encoding='utf-8'))) for p in
-                 (BENCH / 'runs' / r['dataset'] / r['condition'] / r['llm'] / r['rep'] / 'models').glob('*/spec.json')]
-        tested |= any(any(x[1] == 'LBM' and x[0] in ('Q2', 'Q3') for x in c) for c in specs)
-        ok &= tested
-    check('remifentanil with the statement: LBM on Q2 and Q3 tested and dropped in every run', ok)
     pairs = []
     for key, t in tests.items():
         if key[0] != 'remifentanil':
