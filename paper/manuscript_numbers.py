@@ -466,6 +466,16 @@ def main():
                 .get('covariate_tests', []) if x['relationship'] in ('Q2~LBM', 'Q3~LBM')]
         n['rk_lbm_q_max'] = fmt(max(lbmq), 1) if lbmq else 'NA'
 
+    # functional forms of age and LBM in the remifentanil final models without knowledge
+    forms = {'AGE': set(), 'LBM': set()}
+    for _, r in main_grid[(main_grid['dataset'] == 'remifentanil') & (main_grid['condition'] == 'none')].iterrows():
+        spec = json.loads((run_dir(r) / 'results.json').read_text(encoding='utf-8'))['final_model']['specification']
+        for c in spec['covariates']:
+            if c['covariate'] in forms:
+                forms[c['covariate']].add(c['form'])
+    for cov, f in forms.items():
+        n[f'remi_none_{cov.lower()}_forms'] = ' or '.join(sorted(f)) or 'NA'
+
     # GPT phenobarbital runs without knowledge that chose or mentioned the published Apgar cutoff of 5
     import re as _re
     gp = main_grid[(main_grid['dataset'] == 'pheno') & (main_grid['condition'] == 'none') & (main_grid['llm'] == 'gpt')]

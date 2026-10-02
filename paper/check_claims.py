@@ -75,9 +75,7 @@ def checks():
         for p in (BENCH / 'runs' / r['dataset'] / r['condition'] / r['llm'] / r['rep'] / 'models').glob('*/spec.json'):
             c = covs(json.loads(p.read_text(encoding='utf-8')))
             ok &= not any(x[2] == 'linear' for x in c)
-        fc = covs(results(r)['final_model']['specification'])
-        ok &= all(x[2] == 'exponential' for x in fc if x[1] == 'AGE') and all(x[2] == 'power' for x in fc if x[1] == 'LBM')
-    check('remifentanil without knowledge: exponential age, power LBM, no linear forms tested', ok)
+    check('remifentanil without knowledge: no linear forms tested', ok)
     check('remifentanil without knowledge: no GPT run added V3~AGE',
           numbers.get('remifentanil_none_V3_AGE_gpt', '').startswith(('not', 'neither', 'none')))
     check('with the statement, every run implemented every reference relationship (form family)',
