@@ -60,12 +60,18 @@ def conditional_blocks(text, flags):
 
 
 def fill(text, numbers, draft=False):
-    missing = sorted(set(re.findall(r'\{\{([^}]+)\}\}', text)) - set(numbers))
-    if missing and not draft:
-        raise KeyError(f'numbers missing for: {missing} (use --draft to mark them as pending)')
-    if missing:
-        print('pending numbers:', missing)
-    return re.sub(r'\{\{([^}]+)\}\}', lambda m: str(numbers.get(m.group(1), '⟦HL⟧pending⟦/HL⟧')), text)
+    """Replace {{key}} by its value; values may contain placeholders themselves (prose such as misleading_results),
+    so the replacement is repeated until none is left."""
+    for _ in range(3):
+        missing = sorted(set(re.findall(r'\{\{([^}]+)\}\}', text)) - set(numbers))
+        if missing and not draft:
+            raise KeyError(f'numbers missing for: {missing} (use --draft to mark them as pending)')
+        if missing:
+            print('pending numbers:', missing)
+        text = re.sub(r'\{\{([^}]+)\}\}', lambda m: str(numbers.get(m.group(1), '⟦HL⟧pending⟦/HL⟧')), text)
+        if '{{' not in text:
+            break
+    return text
 
 
 class Citations:
