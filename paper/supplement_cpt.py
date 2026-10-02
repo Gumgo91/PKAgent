@@ -257,6 +257,14 @@ def s3():
                              f"{h['delta_ofv']})" for h in steps)
             text(d, f"**{LABEL[ds]}.** Base OFV {v['base_ofv']:.2f}; final OFV {v['final_ofv']:.2f}; retained: "
                     f"{', '.join(v['included']) or 'none'}; {v['fits']} fits. Steps: {desc}.", 9)
+    bb_path = BENCH / 'evaluation' / 'backward_baseline.json'
+    if bb_path.exists():
+        for ds, v in json.loads(bb_path.read_text(encoding='utf-8')).items():
+            steps = '; '.join(f"step {h['step']}: " + ', '.join(f"{k} {x:.1f}" for k, x in h['tests'].items() if x is not None)
+                              for h in v['history'])
+            text(d, f"**{LABEL[ds]} (backward elimination from the reference model).** Removed: "
+                    f"{', '.join(v.get('removed', [])) or 'none'}; retained: {', '.join(v.get('retained', []))}. OFV "
+                    f"increase on removal at each step: {steps}.", 9)
     heading(d, 'S3.2 Statements referring to prior knowledge of the data or their analysis', 3)
     text(d, 'Matches of the regular expression \\bclassic\\b|well[- ]known|textbook|nonmem example|published|literature|'
             'grasela|donn\\b|minto (case-insensitive) in the assistant messages, tool-call arguments and reasoning '
