@@ -126,6 +126,19 @@ def checks():
     check('remifentanil V1~AGE is the weakest reference relationship (drop-one)',
           'evidence_remifentanil_V1~AGE' in numbers and float(numbers['evidence_remifentanil_V1~AGE']) < 3.84)
     import re as _re
+    allr = pd.read_csv(EVAL / 'runs.csv')
+    mis = allr[allr['condition'] == 'misleading']
+    if len(mis):
+        check('misleading: weight effects kept in every phenobarbital run',
+              numbers.get('pm_weight_kept', '').startswith(('all', 'both')))
+        check('misleading: saturable elimination kept in every oral MM run',
+              numbers.get('om_mm_kept', '').startswith(('all', 'both')))
+        check('misleading: two compartments adopted in at least one oral MM run',
+              not numbers.get('om_2cmt_adopted', 'none').startswith(('none', 'neither', 'not')))
+        check('misleading: every report flagged the conflict with the analyst',
+              all(_re.search(r'analyst', report_text(r), re.I) and
+                  _re.search(r'contradict|conflict|reconcil|not supported|disagree|reject', report_text(r), re.I)
+                  for _, r in mis[mis['elimination'].notna()].iterrows()))
     gr = runs[(runs['dataset'] == 'remifentanil') & (runs['llm'] == 'gpt')]
     check('GPT remifentanil reports: backward checks not all repeated after the final covariance change',
           all(_re.search(r'repeat|complete backward', report_text(r), re.I) for _, r in gr.iterrows()))

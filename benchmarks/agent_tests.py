@@ -108,7 +108,7 @@ def analyze(run_dir):
                 and not sa.get('iiv_blocks') and not sb.get('iiv_blocks') \
                 and residual_kind(sa) == residual_kind(sb):
             lo_, hi_ = (a, b) if st_a[1] < st_b[1] else (b, a)
-            compartment_tests.append(dict(fewer=lo_, more=hi_, compartments=[min(st_a[1], st_b[1]), max(st_a[1], st_b[1])],
+            compartment_tests.append(dict(fewer=lo_, more=hi_, type=st_a[0], compartments=[min(st_a[1], st_b[1]), max(st_a[1], st_b[1])],
                                           covariates=len(relationships(small, trans, cols, ref_names)),
                                           delta_ofv=round(conv[lo_]['ofv'] - conv[hi_]['ofv'], 3),
                                           extra_parameters=conv[hi_].get('n_estimated', 0) - conv[lo_].get('n_estimated', 0)))

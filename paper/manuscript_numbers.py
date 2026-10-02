@@ -568,6 +568,65 @@ def main():
         n[f'scm_{ds}_removed'] = ', '.join(short(h['removed']) for h in d['history'] if h['step'] == 'backward remove') \
             or 'none'
 
+    # misleading statements: what the final models adopted, and the evidence against the wrong claims
+    mis = runs[runs['condition'] == 'misleading']
+    if len(mis):
+        def models_of(r):
+            res = json.loads((run_dir(r) / 'results.json').read_text(encoding='utf-8'))
+            out = []
+            for m in res['models']:
+                if m.get('status') != 'converged' or m.get('ofv') is None:
+                    continue
+                d_ = run_dir(r) / 'models' / m['model_id']
+                out.append((m, json.loads((d_ / 'spec.json').read_text(encoding='utf-8')),
+                            json.loads((d_ / 'summary.json').read_text(encoding='utf-8'))))
+            return out
+        pm = mis[mis['dataset'] == 'pheno']
+        om = mis[mis['dataset'] == 'oral_mm']
+        if len(pm):
+            gain, kept, opposite, cl_tests = [], 0, 0, []
+            for _, r in pm.iterrows():
+                ms = models_of(r)
+                with_wt = [m['ofv'] for m, s_, _ in ms if any(c['covariate'] == 'WT' for c in s_['covariates'])]
+                no_wt = [m['ofv'] for m, s_, _ in ms if not any(c['covariate'] == 'WT' for c in s_['covariates'])]
+                if with_wt and no_wt:
+                    gain.append(min(no_wt) - min(with_wt))
+                kept += 'no weight effect' not in str(r['misleading_followed'])
+                coefs = [ce['coefficient'] for m, s_, su in ms for ce in su.get('covariate_effects', [])
+                         if ce['effect'].startswith('CL~') and 'APG' in ce['effect']]
+                opposite += bool(coefs) and max(coefs) > 0 and not any(c < -1e-6 for c in coefs)
+                t = tests_all.get((r['dataset'], r['condition'], r['llm'], r['rep']), {})
+                cl_tests += [x['delta_ofv'] for x in t.get('covariate_tests', []) if x['relationship'] == 'CL~APGR']
+            n['pm_runs'] = of_runs(len(pm), len(pm))
+            n['pm_weight_kept'] = of_runs(kept, len(pm))
+            n['pm_weight_gain'] = span(gain, 0)
+            n['pm_apgar_cl_opposite'] = of_runs(opposite, len(pm))
+            n['pm_apgar_cl_adopted'] = of_runs(int(pm['misleading_followed'].fillna('').str.contains('Apgar on CL').sum()),
+                                               len(pm))
+            n['pm_apgar_cl_tests'] = span(cl_tests, 1)
+        if len(om):
+            gain, two = [], []
+            for _, r in om.iterrows():
+                ms = models_of(r)
+                lin = [m['ofv'] for m, s_, _ in ms if s_['structure'].get('type', 'pk') == 'pk']
+                mm_ = [m['ofv'] for m, s_, _ in ms if s_['structure'].get('type') == 'michaelis_menten']
+                if lin and mm_:
+                    gain.append(min(lin) - min(mm_))
+                t = tests_all.get((r['dataset'], r['condition'], r['llm'], r['rep']), {})
+                # best AIC of one- vs two-compartment Michaelis-Menten models (positive: two compartments better)
+                a1 = [m['aic'] for m, s_, _ in ms if s_['structure'].get('type') == 'michaelis_menten'
+                      and s_['structure'].get('compartments', 1) == 1 and m.get('aic') is not None]
+                a2 = [m['aic'] for m, s_, _ in ms if s_['structure'].get('type') == 'michaelis_menten'
+                      and s_['structure'].get('compartments', 1) == 2 and m.get('aic') is not None]
+                if a1 and a2:
+                    two.append(min(a1) - min(a2))
+            n['om_runs'] = of_runs(len(om), len(om))
+            n['om_mm_kept'] = of_runs(int((om['elimination'] == 'Michaelis-Menten').sum()), len(om))
+            n['om_mm_gain'] = span(gain, 0)
+            n['om_2cmt_adopted'] = of_runs(int((om['compartments'] == 2).sum()), len(om))
+            n['om_2cmt_daic'] = span(two, 1)
+        n['misleading_runs'] = len(mis)
+
     # remifentanil: backward elimination from the reference model (benchmarks/backward_baseline.py)
     bb_path = EVAL / 'backward_baseline.json'
     if bb_path.exists():
