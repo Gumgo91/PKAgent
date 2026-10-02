@@ -466,6 +466,17 @@ def main():
                 .get('covariate_tests', []) if x['relationship'] in ('Q2~LBM', 'Q3~LBM')]
         n['rk_lbm_q_max'] = fmt(max(lbmq), 1) if lbmq else 'NA'
 
+    # GPT phenobarbital runs without knowledge that chose or mentioned the published Apgar cutoff of 5
+    import re as _re
+    gp = main_grid[(main_grid['dataset'] == 'pheno') & (main_grid['condition'] == 'none') & (main_grid['llm'] == 'gpt')]
+    k = 0
+    for _, r in gp.iterrows():
+        res = json.loads((run_dir(r) / 'results.json').read_text(encoding='utf-8'))
+        transcript = (run_dir(r) / 'transcript.jsonl').read_text(encoding='utf-8')
+        chose = any(_re.search(r'APGR\s*<\s*5', t.get('expression', '')) for t in res.get('data_transformations', []))
+        k += bool(chose or _re.search(r'(less than|below) 5', transcript))
+    n['gpt_apgar_cutoff'] = of_runs(k, len(gp))
+
     # strongly supported reference relationships (removal from the reference fit costs >= 6.63) kept without knowledge
     strong = {(ds, r['effect'].split('_')[0]) for ds, d in evidence.items() for r in d.get('removals', [])
               if r.get('delta_ofv') is not None and r['delta_ofv'] >= 6.63}
