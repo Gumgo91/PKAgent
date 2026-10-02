@@ -377,8 +377,12 @@ def main():
             for c in spec['covariates']:
                 if c['covariate'] == 'WT':
                     (fixed if c['coefficient']['fixed'] else est).append(c['coefficient']['value'])
+        # per run: estimated (two exponents) or fixed at 1
+        n_fixed, n_est = len(fixed) // 2, len(est) // 2
         n[f'pheno_none_wt_{llm}'] = ('fixed at 1' if fixed and not est and set(fixed) == {1.0} else
-                                     f'estimated at {span(est, 2)}' if est and not fixed else 'fixed or estimated')
+                                     f'estimated at {span(est, 2)}' if est and not fixed else
+                                     f'estimated at {span(est, 2)} in {word(n_est)} run{"s" if n_est > 1 else ""} '
+                                     f'and fixed at 1 in {word(n_fixed)}')
     same = True
     for (ds, cond), g in runs[runs['condition'].isin(['none', 'knowledge'])].groupby(['dataset', 'condition']):
         sets = {frozenset(k for k in f if k in REFERENCE[ds])

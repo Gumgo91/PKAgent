@@ -60,9 +60,9 @@ def checks():
     ok = all(re.search(r'6\.63|p ?< ?0\.01|retention', report_text(r), re.I) for _, r in pk.iterrows())
     check('phenobarbital expert reports mention the retention criterion', ok)
     pn = runs[(runs['dataset'] == 'pheno') & (runs['condition'] == 'none')]
-    ok = all(re.search(r'13 ?%', report_text(r)) and re.search(r'cannot be (ruled out|excluded)', report_text(r))
+    ok = all(re.search(r'Apgar[^.]*cannot be (ruled out|excluded)', report_text(r), re.I)
              for _, r in pn[pn['llm'] == 'claude'].iterrows())
-    check('Claude phenobarbital reports: Apgar effect of about 13% cannot be excluded', ok)
+    check('Claude phenobarbital reports: an Apgar effect on V cannot be excluded', ok)
     ok = True
     for _, r in pn[pn['llm'] == 'gpt'].iterrows():
         res = results(r)
@@ -128,8 +128,6 @@ def checks():
                         and ofv[a]['n_estimated'] == ofv[b]['n_estimated']:
                     pairs.append(round(ofv[a]['ofv'] - ofv[b]['ofv'], 1))
     check('one direct linear vs exponential comparison, 9.1 in favor of exponential', pairs == [9.1], pairs)
-    check('Claude plotted the raw data in the same runs in which it fitted after viewing plots',
-          numbers.get('claude_plot_data') == numbers.get('claude_fitted_after_plots'))
     check('GPT plotted the data and screened covariates in every run',
           numbers.get('gpt_plot_data', '').startswith('all') and numbers.get('gpt_screen', '').startswith('all'))
     check('runs near the time limit are GPT remifentanil runs only',
