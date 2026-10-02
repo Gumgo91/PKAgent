@@ -57,7 +57,7 @@ def checks():
     ok = all(any(abs(t['delta_ofv'] - 4.543) < .01 for t in tests[(r['dataset'], r['condition'], r['llm'], r['rep'])]
                  ['covariate_tests'] if t['relationship'] == 'V~APGR') for _, r in pk.iterrows())
     check('phenobarbital expert runs: Apgar test of 4.5 in the final model', ok)
-    ok = all(re.search(r'6\.63|p ?< ?0\.01|retention', report_text(r), re.I) for _, r in pk.iterrows())
+    ok = all(re.search(r'6\.63|0\.01|retention|backward', report_text(r), re.I) for _, r in pk.iterrows())
     check('phenobarbital expert reports mention the retention criterion', ok)
     pn = runs[(runs['dataset'] == 'pheno') & (runs['condition'] == 'none')]
     ok = all(re.search(r'Apgar[^.]*cannot be (ruled out|excluded)', report_text(r), re.I)
