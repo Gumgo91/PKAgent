@@ -1,6 +1,6 @@
 """Figure 1: PKAgent architecture, drawn at the printed size of a double-column CPT figure (178 mm wide, text >= 8 pt).
 
-Outputs paper/figures/Figure_1.pdf, .png and .tiff (CMYK).
+Outputs paper/figures/Figure_1_script.pdf, .png and .tiff (CMYK); the submitted Figure 1 is paper/figure1_figurelabs.py.
 """
 import sys
 from pathlib import Path
@@ -65,11 +65,11 @@ def main():
     ax.text(2.50, 1.84, 'images', ha='center', va='bottom', fontsize=8, color=INK, style='italic')
     arrow(ax, (5.07, 3.45), (5.36, 3.45), 'fits', both=True, dy=0.05)
     arrow(ax, (2.76, 0.68), (2.24, 0.68), 'final', dy=0.04)
-    fig.savefig(OUT / 'Figure_1.pdf')
-    fig.savefig(OUT / 'Figure_1.png', dpi=600)
+    fig.savefig(OUT / 'Figure_1_script.pdf')
+    fig.savefig(OUT / 'Figure_1_script.png', dpi=600)
     plt.close(fig)
     from figures import tiff_cmyk
-    tiff_cmyk(OUT / 'Figure_1.png', OUT / 'Figure_1.tiff')
+    tiff_cmyk(OUT / 'Figure_1_script.png', OUT / 'Figure_1_script.tiff')
 
 
 if __name__ == '__main__':
