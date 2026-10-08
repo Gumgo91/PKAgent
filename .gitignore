@@ -1,6 +1,11 @@
 # Environment and secrets
 .env
-.env.local
+.env.*
+!.env.example
+
+# Archives (licensed NONMEM test files; the benchmark archive is attached to the release, not committed) and raw images
+*.zip
+*.raw
 
 # Python build artifacts
 __pycache__/
@@ -37,8 +42,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# PKAgent output (runtime caches and logs)
+# PKAgent output (runtime caches and logs; results/ is the output folder of the README examples)
 output/
+results/
 *.log
 *.pkl
 
@@ -53,3 +59,8 @@ paper/build/
 
 # CPT submission build outputs
 paper/submission_cpt/
+
+# Paper: working notes, and superseded raster figures and drafts of Figure 1 kept only locally
+paper/notes/
+paper/figures/figurelabs/
+paper/figures/archive/

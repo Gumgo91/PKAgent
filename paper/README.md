@@ -1,6 +1,6 @@
 # Building the paper
 
-The submission to Clinical Pharmacology & Therapeutics (CPT) is built from code and result files only.
+The manuscript for Clinical Pharmacology & Therapeutics (CPT) is built from code and result files only.
 `paper/manuscript_cpt.md` holds the text, in which numbers computed from the results are `{{key}}` placeholders.
 `paper/manuscript_numbers.py` computes these values from the benchmark evaluation (`benchmarks/evaluation/`) and the run
 folders (`benchmarks/runs/`) and writes them to `paper/build/numbers.json`. `paper/build_cpt.py` fills them in, numbers
@@ -98,13 +98,12 @@ Figure 1 and the graphical abstract are vector drawings made by `paper/figure1_a
 `paper/graphical_abstract.py` with matplotlib primitives at the printed size (7.0 in wide, Arial). The tool groups and
 the tool count come from `paper/tool_groups.py`, which asserts that its groups cover exactly the tools of
 `src/pkagent/tools.py`; the numbers of the graphical abstract come from `paper/build/numbers.json`. Raster versions
-made with FigureLabs were superseded by these drawings in commit 7a1e4a7; `paper/figures/figurelabs/` keeps them as a
-record, and `paper/figures/archive/` keeps an earlier vector Figure 1.
+made with FigureLabs were superseded by these drawings in commit 7a1e4a7 and are not part of the repository.
 
 ## Implementation notes
 
 - Tested with Python 3.13.5, PKPy2 0.2.1, NumPy 2.2.6, SciPy 1.16.1, pandas 2.3.1 and Matplotlib 3.10.5. The paper
-  scripts also need python-docx (tested 1.1.2) and Pillow (tested 11.1.0), which `pip install .` does not install.
+  scripts also need python-docx (tested 1.1.2) and Pillow (tested 11.1.0): `python -m pip install -e ".[paper]"`.
 - The figure scripts set the font to Arial; without Arial, matplotlib substitutes another font and text widths change.
 - The CMYK TIFFs are converted by `tiff_cmyk` in `benchmarks/figures.py` with the U.S. SWOP press profile shipped with
   Windows (`C:/Windows/System32/spool/drivers/color/RSWOP.icm`). Where that file does not exist, the function falls

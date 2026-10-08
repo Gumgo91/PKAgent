@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use PKAgent, please cite the software and the PKPy2 estimation engine it uses."
+title: "PKAgent"
+type: software
+version: 2.0.0.dev0
+abstract: >-
+  An LLM agent that develops population pharmacokinetic and pharmacodynamic models with the PKPy2 estimation
+  engine. The language model works only through tool calls and computes no numbers itself; PKPy2 fits every model,
+  and every LLM turn and tool call is logged.
+authors:
+  - family-names: "Kong"
+    given-names: "Hyunseung"
+    affiliation: "Interdisciplinary Program in Bioinformatics, Seoul National University"
+  - family-names: "Kim"
+    given-names: "Inyoung"
+repository-code: "https://github.com/Gumgo91/PKAgent"
+url: "https://github.com/Gumgo91/PKAgent"
+license: MIT
+keywords:
+  - population pharmacokinetics
+  - PopPK
+  - PK/PD
+  - nonlinear mixed effects
+  - large language model
+  - agent
+  - tool calling

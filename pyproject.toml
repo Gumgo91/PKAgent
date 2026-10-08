@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0"]          # SPDX license expression (license = "MIT", PEP 639)
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -27,22 +27,25 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 dependencies = [
-  "pkpy2>=0.2.1",
+  "pkpy2 @ git+https://github.com/Gumgo91/PKPy2.git@v0.2.1",   # not on PyPI; the version used for the paper
   "numpy>=2.2,<3",
   "scipy>=1.16,<2",
-  "pandas>=2.2",
+  "pandas>=2.2,<3",
   "matplotlib>=3.8",
-  "openai>=2.0",
+  "openai>=2.0,<3",
 ]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+paper = ["python-docx>=1.1", "Pillow>=11"]   # Word files and figures: paper/, benchmarks/figures.py, docs/
 
 [project.scripts]
 pkagent = "pkagent.cli:main"
 
 [project.urls]
+Homepage = "https://github.com/Gumgo91/PKAgent"
 Repository = "https://github.com/Gumgo91/PKAgent"
+Issues = "https://github.com/Gumgo91/PKAgent/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
