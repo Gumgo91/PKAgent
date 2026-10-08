@@ -8,7 +8,8 @@ references, tables, figure legends), the figures as separate files, and the cove
 
 CPT conventions applied: 12-point Times New Roman, double spacing, 1-inch margins, US Letter, page and line numbers;
 citations as superscript numbers after punctuation, numbered in order of first citation; tables after the references,
-one per page; figure legends after the tables.
+one per page; figure legends after the tables. Headings use the Word styles Heading 1 (main headings, capitals) and
+Heading 2 (subheadings, sentence case), restyled to the body font, so that the navigation pane and PDF bookmarks work.
 """
 import json
 import re
@@ -18,10 +19,10 @@ from pathlib import Path
 
 import docx
 from docx.enum.section import WD_ORIENT
-from docx.enum.text import WD_BREAK, WD_COLOR_INDEX, WD_LINE_SPACING
+from docx.enum.text import WD_COLOR_INDEX, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches, Pt
+from docx.shared import Inches, Pt, RGBColor
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -46,6 +47,7 @@ AI_DISCLOSURE = ('[To be completed by the author: disclosure of any use of artif
                  'this manuscript, as required by the journal (tool name and version, date of use, role, and how the '
                  'author reviewed the output). The language models evaluated in this study are described in Methods.]')
 
+NBSP = '\u00a0'                                 # no-break space
 CITE = re.compile(r'\s*\[([A-Za-z0-9]+(?:;\s*[A-Za-z0-9]+)*)\]([.,;:])?')
 
 
@@ -115,6 +117,7 @@ def base_document():
     pf.line_spacing_rule = WD_LINE_SPACING.DOUBLE
     pf.space_after = Pt(0)
     pf.space_before = Pt(0)
+    style_headings(d)
     sec = d.sections[0]
     sec.page_width, sec.page_height = Inches(8.5), Inches(11)
     for side in ('left_margin', 'right_margin', 'top_margin', 'bottom_margin'):
@@ -124,17 +127,58 @@ def base_document():
     return d
 
 
+def style_headings(d):
+    """Restyle the built-in Heading 1 and Heading 2 (which keep their outline levels) to Times New Roman 12 pt bold
+    black, double spaced, with no space before or after; the template's theme fonts and colors would override the
+    font name and color, so their attributes are removed."""
+    for name in ('Heading 1', 'Heading 2'):
+        st = d.styles[name]
+        st.font.name = 'Times New Roman'
+        st.font.size = Pt(12)
+        st.font.bold = True
+        st.font.italic = False
+        st.font.color.rgb = RGBColor(0, 0, 0)
+        rpr = st.element.rPr
+        fonts = rpr.rFonts
+        for attr in ('w:asciiTheme', 'w:hAnsiTheme', 'w:eastAsiaTheme', 'w:cstheme'):
+            fonts.attrib.pop(qn(attr), None)
+        for attr in ('w:ascii', 'w:hAnsi', 'w:eastAsia', 'w:cs'):
+            fonts.set(qn(attr), 'Times New Roman')
+        color = rpr.find(qn('w:color'))
+        for attr in ('w:themeColor', 'w:themeShade', 'w:themeTint'):
+            color.attrib.pop(qn(attr), None)
+        szcs = rpr.find(qn('w:szCs'))
+        if szcs is not None:
+            szcs.set(qn('w:val'), '24')
+        pf = st.paragraph_format
+        pf.space_before = pf.space_after = Pt(0)
+        pf.line_spacing_rule = WD_LINE_SPACING.DOUBLE
+        pf.keep_with_next = True
+
+
+def word_2013_layout(d):
+    """Compatibility mode 15 (Word 2013 and later) instead of the template's mode 14."""
+    for cs in d.settings.element.find(qn('w:compat')).findall(qn('w:compatSetting')):
+        if cs.get(qn('w:name')) == 'compatibilityMode':
+            cs.set(qn('w:val'), '15')
+
+
 def line_numbers(section):
+    """Continuous line numbers; w:lnNumType goes before w:pgNumType, w:cols and w:docGrid (schema order)."""
     ln = OxmlElement('w:lnNumType')
     ln.set(qn('w:countBy'), '1')
     ln.set(qn('w:restart'), 'continuous')
     ln.set(qn('w:distance'), '360')
-    section._sectPr.append(ln)
+    section._sectPr.insert_element_before(
+        ln, 'w:pgNumType', 'w:cols', 'w:formProt', 'w:vAlign', 'w:noEndnote', 'w:titlePg', 'w:textDirection',
+        'w:bidi', 'w:rtlGutter', 'w:docGrid', 'w:printerSettings', 'w:sectPrChange')
 
 
 def page_numbers(section):
     p = section.footer.paragraphs[0]
     p.alignment = 1
+    p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+    p.paragraph_format.space_after = Pt(0)
     run = p.add_run()
     for tag, text in (('begin', None), (None, 'PAGE'), ('end', None)):
         if tag:
@@ -193,47 +237,50 @@ def set_properties(d, title):
     return d
 
 
-def heading(d, text, level):
-    p = d.add_paragraph()
-    run = p.add_run(text)
-    run.bold = True
-    if level == 3:
-        run.italic = False
+def heading(d, text, level, new_page=False):
+    """Level 2 ('## ', main headings in capitals) uses Heading 1, level 3 ('### ', subheadings in sentence case)
+    Heading 2. new_page starts the heading on a new page (instead of an empty paragraph with a page break)."""
+    p = d.add_paragraph(text, style='Heading 1' if level == 2 else 'Heading 2')
     p.paragraph_format.keep_with_next = True
+    if new_page:
+        p.paragraph_format.page_break_before = True
     return p
 
 
-def page_break(d):
-    d.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
-
-
 # ------------------------------------------------------------------ tables
-def table1_rows():
+def table1_rows(cites):
+    """Key facts only (details in Methods and Table S2); the expert statements are verbatim. Called after the body has
+    been numbered, so the cited sources keep the numbers of their first citation in the text."""
+    def cite(*keys):
+        return '^{' + cites.numbers(list(keys)) + '}'
     design = {
-        'pheno': '59 preterm neonates; IV bolus loading and maintenance doses; 155 concentrations (1–6 per infant); '
-                 'covariates: birth weight, 5-minute Apgar score',
-        'remifentanil': '65 adults aged 20–85 years; one 4- to 20-minute IV infusion; 1,992 arterial concentrations; '
-                        'covariates: age, sex, height, weight, body surface area, LBM',
-        'oral_mm': 'Simulated (subset of Oral_1CPTMM): 40 subjects, 10 per dose level of 10, 20, 40, and 80 mg; single '
-                   'oral dose, then seven daily doses; 25 samples each',
+        'pheno': f'59 preterm neonates{cite("Grasela1985")}; IV loading and maintenance doses; 155 concentrations',
+        'remifentanil': '65 adults aged 20–85 years; 4- to 20-minute IV infusion; 1,992 concentrations',
+        'oral_mm': f'Simulated subset of Oral_1CPTMM{cite("nlmixr2data", "Schoemaker2019")}: 40 subjects; 10–80'
+                   + NBSP + 'mg orally',
     }
     reference = {
-        'pheno': 'NONMEM example model: one compartment; CL and V proportional to birth weight (exponents fixed at 1); '
-                 'V 15.9% larger when Apgar < 5; exponential IIV on CL and V; proportional error',
-        'remifentanil': 'Minto et al.: three compartments; V1, V2, and CL linear in age (centered at 40 years) and LBM '
-                        '(centered at 55 kg); Q2 and Q3 linear in age; V3 constant. Variability model not taken from '
-                        'the publication (PKPy2 fit: exponential IIV on all parameters, proportional error)',
-        'oral_mm': 'Simulation model: one compartment; first-order absorption; MM elimination; 30% IIV on Ka, V, VMAX, '
-                   'and KM; 20% exponential (log-normal) residual error',
+        'pheno': f'NONMEM example model{cite("Boeckmann1994")}: one compartment; CL and V proportional to birth weight; '
+                 'V 15.9% larger if Apgar score below 5',
+        'remifentanil': f'Minto et al.{cite("Minto1997")}: three compartments; V1, V2, and CL linear in age and LBM; Q2 '
+                        'and Q3 linear in age',
+        'oral_mm': 'Simulation model: one compartment; first-order absorption; MM elimination; 30% IIV; 20% '
+                   'exponential residual error',
     }
     label = dict(pheno='Phenobarbital', remifentanil='Remifentanil', oral_mm='Oral MM (simulated)')
     return [[label[k], design[k], reference[k], f'"{DATASETS[k]["knowledge"]}"'] for k in label]
 
 
-def add_table(d, title, header, rows, footnote, widths, size=9, literal=False):
-    """literal=True adds the body cells verbatim (no markup); title, header and footnote keep the markup."""
+def add_table(d, title, header, rows, footnote, widths, size=9, literal=False, note_size=10,
+              note_spacing=WD_LINE_SPACING.SINGLE, fixed=False, new_page=False):
+    """literal=True adds the body cells verbatim (no markup); title, header and footnote keep the markup.
+    fixed=True fixes the column widths (autofit off, tblGrid equal to the cell widths) within the 9-inch text width of
+    a landscape page. new_page starts the title on a new page. Returns the table. (The title is not set to keep with
+    next: Word in compatibility mode 15 hangs exporting a PDF when it is, before a fixed-width table.)"""
     p = d.add_paragraph()
     add_inline(p, title)
+    if new_page:
+        p.paragraph_format.page_break_before = True
     t = d.add_table(rows=1, cols=len(header))
     t.style = 'Table Grid'
     for cell, h in zip(t.rows[0].cells, header):
@@ -248,20 +295,47 @@ def add_table(d, title, header, rows, footnote, widths, size=9, literal=False):
             cell.width = Inches(w)
             for par in cell.paragraphs:
                 par.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+    if fixed:
+        if sum(widths) > 9.0 + 1e-9:
+            raise ValueError(f'column widths sum to {sum(widths):.2f} in > 9.0 in')
+        t.autofit = False
+        for gc, w in zip(t._tbl.tblGrid.findall(qn('w:gridCol')), widths):
+            gc.set(qn('w:w'), str(round(w * 1440)))
+        tblw = t._tbl.tblPr.find(qn('w:tblW'))
+        tblw.set(qn('w:type'), 'dxa')
+        tblw.set(qn('w:w'), str(sum(round(w * 1440) for w in widths)))
     p = d.add_paragraph()
-    add_inline(p, footnote, size=10)
-    p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+    add_inline(p, footnote, size=note_size)
+    p.paragraph_format.line_spacing_rule = note_spacing
+    return t
+
+
+def chars_per_row(t):
+    """Characters of cell text per table row (line breaks inside a cell count as one space)."""
+    return [sum(len(c.text.replace('\n', ' ')) for c in r.cells) for r in t.rows]
+
+
+def _new_section(d):
+    """python-docx ends the current section with a new empty paragraph; move its sectPr into the preceding paragraph,
+    so that a section break adds no (line-numbered) blank line."""
+    sec = d.add_section()
+    sect_p = d.element.body[-2]                      # the new paragraph; body[-1] is the document's final sectPr
+    prev = sect_p.getprevious()
+    if prev is not None and prev.tag == qn('w:p') and not prev.xpath('./w:pPr/w:sectPr'):
+        prev.set_sectPr(sect_p.pPr.sectPr)
+        sect_p.getparent().remove(sect_p)
+    return sec
 
 
 def landscape_section(d):
-    sec = d.add_section()
+    sec = _new_section(d)
     sec.orientation = WD_ORIENT.LANDSCAPE
     sec.page_width, sec.page_height = Inches(11), Inches(8.5)
     return sec
 
 
 def portrait_section(d):
-    sec = d.add_section()
+    sec = _new_section(d)
     sec.orientation = WD_ORIENT.PORTRAIT
     sec.page_width, sec.page_height = Inches(8.5), Inches(11)
     return sec
@@ -305,6 +379,8 @@ def main():
         numbers.update(json.loads(extra.read_text(encoding='utf-8')))
     numbers['ai_disclosure'] = f'⟦HL⟧{AI_DISCLOSURE}⟦/HL⟧'
     numbers['author_contributions'] = CONTRIBUTIONS
+    numbers['funding'] = FUNDING                         # end-matter FUNDING and CONFLICT OF INTEREST sections repeat
+    numbers['coi'] = COI                                 # the title-page sentences
 
     text = (HERE / 'manuscript_cpt.md').read_text(encoding='utf-8')
     text = conditional_blocks(text, dict(numbers, misleading=misleading))
@@ -346,8 +422,17 @@ def main():
         print('WARNING:', p)
     if problems and '--draft' not in sys.argv:
         raise SystemExit('final build refused (use --draft to build anyway): ' + '; '.join(problems))
+    if AI_DISCLOSURE.lstrip().startswith('[To be completed'):          # reported, but the build is not refused
+        print('WARNING: the AI-use disclosure is still a placeholder (AI_DISCLOSURE in paper/build_cpt.py; printed '
+              'highlighted in ACKNOWLEDGMENTS and in the cover letter); the author must write it before submission.')
+    links = re.findall(r'(https://github\.com/\S+) \(tag ([^)]+)\)', text)
+    print('REMINDER: before submission, these Data Availability links must exist (not checked here): '
+          + '; '.join(f'{url} tag {tag}' for url, tag in links)
+          + ('; the release of the first tag must carry the run logs, reference fits, and evaluation outputs.'
+             if 'attached to that release' in text else '.'))
 
     d = base_document()
+    word_2013_layout(d)
     # title page
     p = d.add_paragraph()
     add_inline(p, f'**{TITLE}**')
@@ -366,66 +451,63 @@ def main():
     p = d.add_paragraph()
     add_inline(p, f'**Word count:** main text {n_words:,}; abstract {n_abstract}. **References:** {n_refs}. '
                   f'**Figures:** {n_fig}. **Tables:** {n_tab}.')
-    page_break(d)
 
     for lvl, title, paras in body:
         if title in ('FIGURE LEGENDS', 'SUPPLEMENTARY MATERIAL'):
             continue
-        if title == 'ABSTRACT':
-            heading(d, 'ABSTRACT', 2)
-            for t in paras:
-                add_inline(d.add_paragraph(), t)
-            page_break(d)
-            continue
-        if title == 'STUDY HIGHLIGHTS':
-            page_break(d)
-        heading(d, title, lvl)
+        heading(d, title, lvl, new_page=title in ('ABSTRACT', 'INTRODUCTION'))
         for t in paras:
-            add_inline(d.add_paragraph(), t)
+            p = add_inline(d.add_paragraph(), t)
+            if title == 'STUDY HIGHLIGHTS' and t.startswith('**'):
+                p.paragraph_format.keep_with_next = True             # keep each question with its answer
 
     # references
-    page_break(d)
-    heading(d, 'REFERENCES', 2)
+    heading(d, 'REFERENCES', 2, new_page=True)
     for i, k in enumerate(cites.order, 1):
         p = d.add_paragraph()
         p.paragraph_format.left_indent = Inches(.35)
         p.paragraph_format.first_line_indent = Inches(-.35)
         add_inline(p, f'{i}.\t' + REFERENCES[k].replace('<', '‹').replace('>', '›').replace('‹', '<').replace('›', '>'))
 
-    # tables (landscape, one per page)
+    # tables (landscape, one per page); the sources cited in Table 1 keep their numbers from the text
     landscape_section(d)
-    add_table(d, '**Table 1.** Benchmark datasets, reference models, and the expert statement of the expert-knowledge '
-                 'condition',
-              ['Dataset', 'Design', 'Reference model', 'Expert statement'], table1_rows(),
-              'CL, clearance; IIV, interindividual variability; IV, intravenous; Ka, absorption rate constant; KM, '
-              'Michaelis constant; LBM, lean body mass; MM, Michaelis–Menten; Q2 and Q3, intercompartmental '
-              'clearances; V, V1, V2, V3, volumes of distribution; VMAX, maximum elimination rate.',
-              [1.3, 2.6, 2.6, 2.5])
-    page_break(d)
-    header = ['Dataset, condition', 'Runs (GPT/Claude)', 'Reference structure',
-              'Reference relationships present (reference form family)', 'Other relationships per run',
-              'Typical values agree', 'Reproduced', 'ΔOFV vs. reference fit', 'ΔAIC vs. reference fit',
-              'Models fitted', 'Hours', 'Fees (USD)']
+    t1 = add_table(d, '**Table 1.** Benchmark datasets, reference models, and the expert statement of the '
+                      'expert-knowledge condition',
+                   ['Dataset', 'Design', 'Reference model', 'Expert statement'], table1_rows(cites),
+                   'CL, clearance; IIV, interindividual variability; IV, intravenous; LBM, lean body mass; MM, '
+                   'Michaelis–Menten; Q2 and Q3, intercompartmental clearances; V, V1, V2, volumes of distribution. '
+                   'Details of the designs and reference models are given in Methods and Table S2.',
+                   [1.15, 2.1, 2.45, 3.3], size=12, note_size=12, note_spacing=WD_LINE_SPACING.DOUBLE, fixed=True)
+    if len(cites.order) != n_refs:
+        raise SystemExit(f'Table 1 cites a reference not cited in the text: {cites.order[n_refs:]}')
+    header = ['Dataset, condition', 'Runs', 'Reference structure', 'Reference relationships (form)',
+              'Other relationships', 'Typical values agree', 'Reproduced', 'ΔOFV', 'ΔAIC']
+
+    def two_lines(v):                                    # median (range): the range on its own line
+        return str(v).replace(' (', '\n(', 1)
     rows = [[f"{r['dataset']}, {r['condition'].lower()}", r['runs'], r['structure'],
-             'NA' if r['relationships'] == 'NA' else f"{r['relationships']} ({r['forms']})", r['extra'],
-             r['typical'], r['reproduced'], r['delta_ofv'], r['delta_aic'], r['fits'], r['hours'], r['cost']]
+             'NA' if r['relationships'] == 'NA' else f"{r['relationships']} ({r['forms']})", two_lines(r['extra']),
+             r['typical'], r['reproduced'], two_lines(r['delta_ofv']), two_lines(r['delta_aic'])]
             for r in table2]
-    add_table(d, '**Table 2.** Final models of the agent runs compared with the reference models',
-              header, rows,
-              'Values are counts over runs, or medians (ranges). '
-              + ('Misleading statement: deliberately wrong statement (Supplementary Material S1); counts refer to the '
-                 'true reference model. ' if misleading else '') +
-              'Reference relationships: parameter–covariate pairs of the reference model present in the final model, summed over '
-              'runs, with the number in the reference form family in parentheses (NA, the reference model has no '
-              'covariates). Other relationships: pairs in the final model that are not in the reference model. '
-              'Typical values agree: the median ratio of the subject-level typical values (final/reference model) lay '
-              'within 0.80 to 1.25 for every reference parameter. Reproduced: reference structure, exactly the '
-              'reference relationships, and agreement of typical values (stochastic models not compared). ΔOFV and '
-              'ΔAIC: final model minus the PKPy2 fit of the reference model, whose stochastic model is given in Table '
-              'S2 (data scale for log-normal error). Fees: language model fees. AIC, '
-              'Akaike information criterion; Claude, Claude Opus 5.5; GPT, GPT-6.1 Sol; MM, Michaelis–Menten; NA, not '
-              'applicable; OFV, objective function value; USD, US dollars.',
-              [1.4, .6, .6, .95, .7, .6, .6, 1.05, 1.0, .75, .75, .8], size=8)
+    t2 = add_table(d, '**Table 2.** Final models of the agent runs compared with the reference models',
+                   header, rows,
+                   'AIC, Akaike information criterion; Claude, Claude Opus 5.5; GPT, GPT-6.1 Sol; MM, '
+                   'Michaelis–Menten; NA, not applicable; OFV, objective function value. '
+                   'Values are counts over runs, or medians (ranges). Runs: number of runs (GPT/Claude). '
+                   + ('Misleading statement: deliberately wrong statement (Supplementary Material S1); counts refer '
+                      'to the true reference model. ' if misleading else '') +
+                   'Reference structure: runs whose final model had the structure of the reference model. Reference '
+                   'relationships (form): parameter–covariate pairs of the reference model present in the final model, '
+                   'summed over runs, with the number in the reference form family in parentheses (NA, the reference '
+                   'model has no covariates). Other relationships: pairs per run in the final model that are not in '
+                   'the reference model. Typical values agree: the median ratio of the subject-level typical values '
+                   '(final/reference model) lay within 0.80 to 1.25 for every reference parameter. Reproduced: '
+                   'reference structure, exactly the reference relationships, and agreement of typical values '
+                   '(stochastic models not compared). ΔOFV and ΔAIC: final model minus the PKPy2 fit of the reference '
+                   'model, whose stochastic model is given in Table S2 (data scale for log-normal error).',
+                   [1.5, .6, .84, 1.0, 1.0, .75, .95, 1.18, 1.18], size=10, note_size=12, fixed=True, new_page=True)
+    print('characters per row: Table 1 ' + ', '.join(map(str, chars_per_row(t1))) + '; Table 2 '
+          + ', '.join(map(str, chars_per_row(t2))))
 
     # figure legends and supplementary material
     portrait_section(d)
@@ -434,8 +516,6 @@ def main():
             heading(d, title, 2)
             for t in paras:
                 add_inline(d.add_paragraph(), t)
-            if title == 'FIGURE LEGENDS':
-                d.add_paragraph()
 
     OUT.mkdir(exist_ok=True)
     set_properties(d, TITLE)
@@ -454,16 +534,35 @@ def main():
     print('wrote', OUT / 'PKAgent_CPT_manuscript.docx')
 
 
+def signature_lines():
+    """Name, program, university, postal address, and email of the corresponding author, one per line."""
+    contact, email = CORRESPONDING.rsplit('. Email: ', 1)
+    name, program, university, address = contact.split(', ', 3)
+    return [name, program, university, address, f'Email: {email}']
+
+
 def cover_letter():
+    """Business-letter layout: Letter page, 1-inch margins, Times New Roman 12 pt, single spacing with 12 pt after
+    each paragraph, page numbers in the footer, signature block on separate lines."""
     import datetime as dt
     today = dt.date.today()
     values = dict(date=f'{today:%B} {today.day}, {today.year}', title=TITLE, ai_disclosure=f'⟦HL⟧{AI_DISCLOSURE}⟦/HL⟧',
-                  corresponding=CORRESPONDING.replace('. Email:', '\nEmail:'))
+                  corresponding='\n'.join(signature_lines()))
     text = (HERE / 'cover_letter_cpt.md').read_text(encoding='utf-8')
     text = re.sub(r'\{\{(\w+)\}\}', lambda m: values[m.group(1)], text)
     d = docx.Document()
     st = d.styles['Normal']
     st.font.name, st.font.size = 'Times New Roman', Pt(12)
+    st.element.rPr.rFonts.set(qn('w:eastAsia'), 'Times New Roman')
+    pf = st.paragraph_format
+    pf.line_spacing_rule = WD_LINE_SPACING.SINGLE
+    pf.space_before, pf.space_after = Pt(0), Pt(12)
+    sec = d.sections[0]
+    sec.page_width, sec.page_height = Inches(8.5), Inches(11)
+    for side in ('left_margin', 'right_margin', 'top_margin', 'bottom_margin'):
+        setattr(sec, side, Inches(1))
+    page_numbers(sec)
+    word_2013_layout(d)
     for block in text.split('\n\n'):
         p = d.add_paragraph()
         for k, line in enumerate(block.strip().splitlines()):
