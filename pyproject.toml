@@ -9,7 +9,7 @@ description = "An LLM agent that develops population pharmacokinetic and pharmac
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 license = "MIT"
-authors = [{ name = "Hyunseung Kong" }, { name = "Inyoung Kim" }]
+authors = [{ name = "Hyunseung Kong", email = "hskong@snu.ac.kr" }]
 keywords = [
   "population pharmacokinetics",
   "PopPK",
@@ -27,7 +27,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 dependencies = [
-  "pkpy2 @ git+https://github.com/Gumgo91/PKPy2.git@v0.2.1",   # not on PyPI; the version used for the paper
+  "pkpy2 @ git+https://github.com/Gumgo91/PKPy2.git",   # not on PyPI; installed from its GitHub repository
   "numpy>=2.2,<3",
   "scipy>=1.16,<2",
   "pandas>=2.2,<3",

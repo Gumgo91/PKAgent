@@ -11,8 +11,6 @@ authors:
   - family-names: "Kong"
     given-names: "Hyunseung"
     affiliation: "Interdisciplinary Program in Bioinformatics, Seoul National University"
-  - family-names: "Kim"
-    given-names: "Inyoung"
 repository-code: "https://github.com/Gumgo91/PKAgent"
 url: "https://github.com/Gumgo91/PKAgent"
 license: MIT

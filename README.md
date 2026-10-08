@@ -52,9 +52,9 @@ left and the fees spent; when a limit is reached, the agent is asked to finalize
 
 ## Installation
 
-PKAgent requires Python 3.13 (`requires-python = ">=3.13,<3.14"`) and PKPy2 0.2.1, the version used for the paper.
-PKPy2 is not on PyPI: `pyproject.toml` declares it as `pkpy2 @ git+https://github.com/Gumgo91/PKPy2.git@v0.2.1`, and
-pip installs it from that tag of its repository (git must be installed).
+PKAgent requires Python 3.13 (`requires-python = ">=3.13,<3.14"`) and PKPy2. PKPy2 is not on PyPI: `pyproject.toml`
+declares it as `pkpy2 @ git+https://github.com/Gumgo91/PKPy2.git`, and pip installs it from its repository (git must
+be installed).
 
 ```bash
 git clone https://github.com/Gumgo91/PKAgent.git
