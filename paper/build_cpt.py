@@ -31,8 +31,7 @@ BUILD = HERE / 'build'
 OUT = HERE / 'submission_cpt'
 DATASETS = json.loads((HERE.parent / 'benchmarks' / 'datasets.json').read_text(encoding='utf-8'))
 
-TITLE = ('A Large Language Model Agent for Population Pharmacokinetic Model Development on an Open-Source Engine: '
-         'Agreement With Reference Models Without and With Expert Knowledge')
+TITLE = 'PKAgent: Expert Knowledge Versus Data in Population Pharmacokinetic Modeling by a Large Language Model Agent'
 AUTHORS = [('Hyunseung Kong', 1)]
 AFFILIATIONS = {1: 'Interdisciplinary Program in Bioinformatics, Seoul National University, Seoul, Republic of Korea'}
 CORRESPONDING = ('Hyunseung Kong, Interdisciplinary Program in Bioinformatics, Seoul National University, 1 Gwanak-ro, '
