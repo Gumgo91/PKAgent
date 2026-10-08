@@ -9,10 +9,21 @@ runs `paper/check_claims.py` (checks of the worded claims and typed values again
 outputs, and of the alternative text of the figures), and writes the Word manuscript and the cover letter to
 `paper/submission_cpt/`. It refuses a final build when a number is missing, a worded claim no longer holds, or a CPT
 limit is exceeded (main text 4,000 words, abstract 250 words, Study Highlights under 250 words, 50 references, 7
-figures and tables, 130 characters per table row); `python paper/build_cpt.py --draft` builds anyway, marks missing
-numbers and prints the problems.
+figures and tables, 130 characters per table row); the counts are printed in the console, not written in the document.
+`python paper/build_cpt.py --draft` builds anyway, marks missing numbers and prints the problems.
 The figures, the graphical abstract and the supplementary material are written by their own scripts from the same
-result files. All commands run from the repository root.
+result files; the supplementary material is one file, `paper/submission_cpt/Supplementary_Material.docx`, with the
+sections S1 to S3. All commands run from the repository root.
+
+The Word files have the format of the author's earlier paper. `paper/templates/make_templates.py` makes two empty
+templates from that paper's manuscript and supplementary file (read, never changed; their paths are the two
+arguments): `paper/templates/manuscript_template.docx` and `supplement_template.docx` keep the styles, settings,
+theme, page setup and table style and no text of the earlier paper, which the script checks (`--forbid WORD ...`
+adds words that must not occur).
+`build_cpt.py` (manuscript and cover letter) and `supplement_cpt.py` start every file from these templates: US Letter
+portrait, margins 1.25 in left and right and 1.0 in top and bottom, no header, footer, page or line numbers, Times New
+Roman 11 pt with line spacing 1.15 and 10 pt after each paragraph, every paragraph in the Normal style with direct
+formatting (headings 12 pt bold, subsection headings bold), and the template's grid table style.
 
 ## Paper items
 
@@ -26,18 +37,19 @@ result files. All commands run from the repository root.
 | Figure 4 | `python benchmarks/figures.py` | `benchmarks/evaluation/runs.csv`, reference fits, run folders | `paper/figures/Figure_4.pdf`, `.png`, `.tiff` |
 | Alt text (figures and graphical abstract) | written by hand; checked by `python paper/check_claims.py` (`alt_text_checks`, also run by `build_cpt.py`) | `paper/build/numbers.json`, `pkagent.config.Budget`, `src/pkagent/prompts.py`, `paper/tool_groups.py`, constants of `benchmarks/figures.py` and `paper/graphical_abstract.py`, `benchmarks/evaluation/runs.csv`, evaluation.json | `paper/figures/alt_text.txt`, copied to `paper/submission_cpt/` by `build_cpt.py` |
 | Graphical abstract (image and text) | `python paper/graphical_abstract.py` | `paper/build/numbers.json`, `paper/tool_groups.py` | `paper/figures/Graphical_abstract.pdf`, `.png`, `.tiff`, `.txt`; copies of the `.pdf`, `.tiff` and `.txt` in `paper/submission_cpt/` |
-| Manuscript (text, figure legends) | `python paper/build_cpt.py` | `paper/manuscript_cpt.md`, `paper/misleading_text.json`, `paper/build/numbers.json`, `paper/references_cpt.py`, `paper/figures/Figure_<n>.pdf` and `.tiff` | `paper/submission_cpt/PKAgent_CPT_manuscript.docx`; `Figure_1` to `Figure_4` `.pdf` and `.tiff` and `alt_text.txt` copied to `paper/submission_cpt/`; `paper/build/manuscript_cpt_filled.md`, `reference_order.json` |
+| Word templates (format only) | `python paper/templates/make_templates.py MANUSCRIPT.docx SUPPLEMENT.docx` | the manuscript and supplementary file of the author's earlier paper (read only) | `paper/templates/manuscript_template.docx`, `supplement_template.docx` |
+| Manuscript (text, figure legends, figures) | `python paper/build_cpt.py` | `paper/manuscript_cpt.md`, `paper/misleading_text.json`, `paper/build/numbers.json`, `paper/references_cpt.py`, `paper/figures/Figure_<n>.png` (embedded), `.pdf` and `.tiff`, `paper/figures/alt_text.txt`, `paper/templates/manuscript_template.docx` | `paper/submission_cpt/PKAgent_CPT_manuscript.docx`; `Figure_1` to `Figure_4` `.pdf` and `.tiff` and `alt_text.txt` copied to `paper/submission_cpt/`; `paper/build/Figure_<n>_300dpi.png` (the embedded copies), `manuscript_cpt_filled.md`, `reference_order.json` |
 | Table 1 | `python paper/build_cpt.py` | dataset facts in `table1_rows` of `build_cpt.py` (the expert statements are in Supplementary Material S1.5) | in `PKAgent_CPT_manuscript.docx` |
 | Table 2 | `python paper/build_cpt.py` | `paper/build/table2.json` | in `PKAgent_CPT_manuscript.docx` |
-| Cover letter | `python paper/build_cpt.py` | `paper/cover_letter_cpt.md` | `paper/submission_cpt/PKAgent_CPT_cover_letter.docx` |
-| Supplementary Material S1 | `python paper/supplement_cpt.py` | `src/pkagent/prompts.py` (system prompt, task message), `src/pkagent/spec.py` (schema), `benchmarks/datasets.json` (descriptions and statements) | `paper/submission_cpt/Supplementary_Material_S1.docx` |
-| Table S1 | `python paper/supplement_cpt.py` | `src/pkagent/tools.py` (definitions), `paper/tool_groups.py` (groups of Figure 1) | in `Supplementary_Material_S1.docx` |
-| Supplementary Material S2 | `python paper/supplement_cpt.py` | `src/pkagent/config.py` (settings), `benchmarks/evaluation/runs.csv`, oral_mm_residual_check.json, `benchmarks/reference_fits/`, `paper/build/numbers.json` | `paper/submission_cpt/Supplementary_Material_S2.docx` |
-| Table S2 | `python paper/supplement_cpt.py` | `benchmarks/evaluation/reference_table.csv`, `benchmarks/reference_fits/<dataset>/reference_fit.json` | in `Supplementary_Material_S2.docx` |
-| Table S3 | `python paper/supplement_cpt.py` | `benchmarks/evaluation/effect_evidence.json` | in `Supplementary_Material_S2.docx` |
-| Supplementary Material S3 | `python paper/supplement_cpt.py` | `benchmarks/evaluation/scm_baseline.json`, backward_baseline.json, `paper/build/recall.json`, final reports in the run folders | `paper/submission_cpt/Supplementary_Material_S3.docx` |
-| Table S4 | `python paper/supplement_cpt.py` | `benchmarks/evaluation/runs.csv`, agent_tests.json, standard_vpc.json, run folders | in `Supplementary_Material_S3.docx` |
-| Table S5 | `python paper/supplement_cpt.py` | `benchmarks/evaluation/agent_tests.json`, tool logs of the runs | in `Supplementary_Material_S3.docx` |
+| Cover letter | `python paper/build_cpt.py` | `paper/cover_letter_cpt.md`, `paper/templates/manuscript_template.docx` | `paper/submission_cpt/PKAgent_CPT_cover_letter.docx` |
+| Supplementary Material S1 | `python paper/supplement_cpt.py` | `src/pkagent/prompts.py` (system prompt, task message), `src/pkagent/spec.py` (schema), `benchmarks/datasets.json` (descriptions and statements), `paper/templates/supplement_template.docx` | section S1 of `paper/submission_cpt/Supplementary_Material.docx` |
+| Table S1 | `python paper/supplement_cpt.py` | `src/pkagent/tools.py` (definitions), `paper/tool_groups.py` (groups of Figure 1) | in section S1 of `Supplementary_Material.docx` |
+| Supplementary Material S2 | `python paper/supplement_cpt.py` | `src/pkagent/config.py` (settings), `benchmarks/evaluation/runs.csv`, oral_mm_residual_check.json, `benchmarks/reference_fits/`, `paper/build/numbers.json` | section S2 of `Supplementary_Material.docx` |
+| Table S2 | `python paper/supplement_cpt.py` | `benchmarks/evaluation/reference_table.csv`, `benchmarks/reference_fits/<dataset>/reference_fit.json` | in section S2 of `Supplementary_Material.docx` |
+| Table S3 | `python paper/supplement_cpt.py` | `benchmarks/evaluation/effect_evidence.json` | in section S2 of `Supplementary_Material.docx` |
+| Supplementary Material S3 | `python paper/supplement_cpt.py` | `benchmarks/evaluation/scm_baseline.json`, backward_baseline.json, `paper/build/recall.json`, final reports in the run folders | section S3 of `Supplementary_Material.docx` |
+| Table S4 | `python paper/supplement_cpt.py` | `benchmarks/evaluation/runs.csv`, agent_tests.json, standard_vpc.json, run folders | in section S3 of `Supplementary_Material.docx` |
+| Table S5 | `python paper/supplement_cpt.py` | `benchmarks/evaluation/agent_tests.json`, tool logs of the runs | in section S3 of `Supplementary_Material.docx` |
 | Benchmark archive (Data Availability) | `python benchmarks/export_archive.py` | `benchmarks/runs/`, `reference_fits/`, `evaluation/` | `dist/PKAgent_benchmark_archive.zip` |
 
 ## Order of the commands
@@ -66,8 +78,10 @@ release archive of step 14.
 10. `python paper/manuscript_numbers.py`.
 11. Figures: `python benchmarks/figures.py`, `python paper/figure1_architecture.py`,
     `python paper/graphical_abstract.py` (reads numbers.json from step 10).
-12. `python paper/build_cpt.py` (copies Figures 1 to 4 from step 11 and runs the claim checks).
-13. `python paper/supplement_cpt.py`.
+12. `python paper/build_cpt.py` (embeds and copies Figures 1 to 4 from step 11 and runs the claim checks). It starts
+    from `paper/templates/manuscript_template.docx`; run `python paper/templates/make_templates.py MANUSCRIPT.docx SUPPLEMENT.docx` first if the
+    templates are missing (they only change when the earlier paper's format does).
+13. `python paper/supplement_cpt.py`: the one supplementary file, from `paper/templates/supplement_template.docx`.
 14. `python benchmarks/export_archive.py`: the release archive of the runs, reference fits and evaluation (no data
     files; local paths removed).
 
@@ -92,5 +106,17 @@ record, and `paper/figures/archive/` keeps an earlier vector Figure 1.
 - The figure scripts contain no random elements.
 - `build_cpt.py` warns while the AI-use disclosure (`AI_DISCLOSURE`) is a placeholder and prints the repository links
   of the Data Availability Statement, which must exist before submission.
+- The 4,000-word limit is checked (and the final build refused) on the script's count of Introduction to Conclusion with
+  the headings but without the section numbers of the template ('2.1'). Word's own count of the same text is larger: it
+  counts the section numbers and splits words at en and em dashes ('Michaelis–Menten', citation ranges such as '8–12').
+  `build_cpt.py` prints that count as well, computed from the built document, and warns, without refusing the build,
+  when it is over 4,000; whether to cut words or accept the count is the author's decision.
+- Word locks an open document: `build_cpt.py` and `supplement_cpt.py` stop with a message when an output file is open
+  in Word; close it and run the script again.
+- `supplement_cpt.py` writes `Supplementary_Material.docx` only when all three sections are built (otherwise the
+  previous file is unchanged and every problem is printed). Its tables fit the 6.0 in text width of the portrait page:
+  Tables S2 and S3 at the body size, Tables S1, S5 and S4 at 9, 8 and 6 pt with fixed column widths. It warns when
+  `Supplementary_Material_S1.docx` to `_S3.docx` of the earlier layout (one file per section) are still in
+  `paper/submission_cpt/`.
 - `paper/build.py`, `paper/manuscript.md`, `paper/supplement.py` and `paper/supplement.md` are an earlier draft for
   another format; no script of the CPT submission reads them.

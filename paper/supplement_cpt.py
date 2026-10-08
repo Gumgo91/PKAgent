@@ -1,12 +1,22 @@
 """Supplementary material of the CPT submission, generated from the code, the benchmark definitions and the runs.
 
+One file, paper/submission_cpt/Supplementary_Material.docx, with three sections:
 S1  system prompt, task message, tools (Table S1), model specification schema, and the dataset descriptions, expert
     statements and misleading statements given to the agent.
 S2  run and estimation settings; PKPy2 fits of the reference models (Table S2); increase in OFV when each reference
     relationship is removed (Table S3).
 S3  final model, diagnostics, tests and tool use of every run (Tables S4 and S5), the deterministic covariate
     baselines, statements referring to prior knowledge (recall), and the final report of every run.
-Outputs: paper/submission_cpt/Supplementary_Material_S1.docx, _S2.docx, _S3.docx (captions inside the files).
+The file is written only when all three sections are built; otherwise the previous file is left unchanged.
+
+Format: that of the author's earlier supplementary file, from paper/templates/supplement_template.docx (python
+paper/templates/make_templates.py): US Letter portrait, margins 1.25 in left and right and 1.0 in top and bottom, no
+header, footer or page numbers; Times New Roman 11 pt, line spacing 1.15, 10 pt after each paragraph; every paragraph in
+the Normal style with direct formatting. No title page: the file starts with the heading of S1. Section headings 12 pt
+bold (S2 and S3 start on a new page), subsection headings bold at body size, table captions bold, tables in the
+template's grid table style with a Normal note below them: at body size where they fit the 6.0 in text width, the wide
+ones at a smaller font with fixed column widths. Verbatim code (system prompt, task message, schema) is set in Consolas,
+the recall excerpts and final reports at 9 pt.
 Run benchmarks/reference_fits.py, benchmarks/evaluate.py, benchmarks/agent_tests.py, benchmarks/reference_table.py and
 paper/manuscript_numbers.py first.
 """
@@ -17,13 +27,16 @@ from pathlib import Path
 
 import pandas as pd
 from docx.enum.text import WD_LINE_SPACING
+from docx.oxml import OxmlElement
 from docx.shared import Pt
+from docx.text.paragraph import Paragraph
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT / 'src'))
 sys.path.insert(0, str(HERE))
-from build_cpt import TITLE, add_inline, add_table, base_document, heading, set_properties   # noqa: E402
+from build_cpt import (TITLE, add_inline, add_table, base_document, heading, paragraph, save_docx,  # noqa: E402
+                       set_properties)
 from pkagent.config import Budget, Settings                           # noqa: E402
 from pkagent.prompts import SYSTEM, task                              # noqa: E402
 from pkagent.spec import SPEC_SCHEMA                                  # noqa: E402
@@ -31,13 +44,16 @@ from pkagent.tools import TOOLS                                       # noqa: E4
 from tool_groups import N_TOOLS, TOOL_GROUPS                          # noqa: E402   (the groups of Figure 1)
 
 OUT = HERE / 'submission_cpt'
+FILE = 'Supplementary_Material.docx'
+OLD_FILES = [f'Supplementary_Material_S{i}.docx' for i in (1, 2, 3)]   # the earlier layout: one file per section
+SMALL = 9                                   # points: recall excerpts and final reports (verbatim)
 BENCH = ROOT / 'benchmarks'
 DATASETS = json.loads((BENCH / 'datasets.json').read_text(encoding='utf-8'))
 LABEL = dict(pheno='Phenobarbital', remifentanil='Remifentanil', oral_mm='Oral MM (simulated)')
 NAME = dict(pheno='phenobarbital', remifentanil='remifentanil', oral_mm='oral MM')       # within a sentence
 LLM = dict(gpt='GPT-6.1 Sol', claude='Claude Opus 5.5')
 COND = dict(none='no knowledge', knowledge='expert statement', misleading='misleading statement')
-# the titles of the files; the SUPPLEMENTARY MATERIAL list of the manuscript uses the same
+# the titles of the sections; the SUPPLEMENTARY MATERIAL list of the manuscript uses the same
 TITLES = dict(
     S1='System prompt, task message, tools (Table S1), model specification schema, and the dataset descriptions, '
        'expert statements, and misleading statements given to the agent',
@@ -130,59 +146,72 @@ def tool_log(path):
             if line.strip()]
 
 
-def single(p, size=None):
-    p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
-    if size:
-        for r in p.runs:
-            r.font.size = Pt(size)
-    return p
+def text(d, t, small=False):
+    """A Normal paragraph with the markup of add_inline: the template's 11 pt, line spacing 1.15 and 10 pt after, or
+    9 pt with 4 pt after (small)."""
+    return add_inline(paragraph(d, after=4 if small else None), t, size=SMALL if small else None)
 
 
-def text(d, t, size=None):
-    return single(add_inline(d.add_paragraph(), t), size)
+def verbatim(d, t):
+    """Verbatim text (no markup) at 9 pt with 4 pt after."""
+    return add_inline(paragraph(d, after=4), t, size=SMALL, literal=True)
 
 
-def verbatim(d, t, size=None):
-    return single(add_inline(d.add_paragraph(), t, literal=True), size)
-
-
-def labeled(d, label, body, size=None, bold=False):
-    """A paragraph of an italic (or bold) label followed by verbatim text (no markup: '*' and '**' are kept)."""
-    p = d.add_paragraph()
+def labeled(d, label, body, small=False, bold=False):
+    """A paragraph of an italic (or bold) label followed by verbatim text (no markup: '*' and '**' are kept), at body
+    size or, small, at 9 pt with 4 pt after."""
+    size = SMALL if small else None
+    p = paragraph(d, after=4 if small else None)
     run = p.add_run(label)
     if bold:
         run.bold = True
     else:
         run.italic = True
-    add_inline(p, body, literal=True)
-    return single(p, size)
+    if size:
+        run.font.size = Pt(size)
+    add_inline(p, body, size=size, literal=True)
+    return p
+
+
+def group_label(d, t):
+    """Bold label of a group of paragraphs (a dataset, a run): body size, 8 pt before and 2 pt after, kept with the
+    paragraph that follows."""
+    return paragraph(d, t, bold=True, before=8, after=2, keep_next=True)
 
 
 def code(d, t, size=8):
+    """Verbatim code: one single-spaced Consolas paragraph per line, without space between the lines and with the
+    template's 10 pt after the block."""
+    p = None
     for line in t.rstrip().splitlines():
         p = d.add_paragraph()
         run = p.add_run(line if line else ' ')
         run.font.name = 'Consolas'
         run.font.size = Pt(size)
-        single(p)
+        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
         p.paragraph_format.space_after = Pt(0)
+    if p is not None:
+        p.paragraph_format.space_after = Pt(10)
 
 
-def new_doc(key):
-    d = base_document()
-    p = d.add_paragraph()
-    add_inline(p, f'**Supplementary Material {key}. {TITLES[key]}**')
-    text(d, f'*{TITLE}*')
-    return d
+def section(d, key):
+    """Heading of a section, 12 pt bold as the headings of the template; S2 and S3 start on a new page."""
+    heading(d, f'Supplementary Material {key}. {TITLES[key]}', 2, new_page=key != 'S1')
 
 
-def save(d, key):
-    set_properties(d, f'Supplementary Material {key}. {TITLES[key]}')
-    d.save(OUT / f'Supplementary_Material_{key}.docx')
+def table(d, title, header, rows, footnote, widths, **kw):
+    """Caption, table and note by add_table of build_cpt (the template's grid table style, header row repeated on each
+    page), with fixed column widths, which must fit the 6.0 in text width; the caption is kept on the page of the
+    table, and a row is not split across pages."""
+    t = add_table(d, title, header, rows, footnote, widths, fixed=True, **kw)
+    Paragraph(t._tbl.getprevious(), d._body).paragraph_format.keep_with_next = True
+    for row in t.rows:
+        row._tr.get_or_add_trPr().insert(0, OxmlElement('w:cantSplit'))
+    return t
 
 
-def s1():
-    d = new_doc('S1')
+def s1(d):
+    section(d, 'S1')
     heading(d, 'S1.1 System prompt', 3)
     text(d, 'Given verbatim to the language model at the start of every run.')
     code(d, SYSTEM)
@@ -208,12 +237,12 @@ def s1():
     header = ['Group', 'Tool', 'Description', 'Parameters']
     note = ('Group, the functional group of the tool in Figure 1 (paper/tool_groups.py); the grouping is descriptive '
             'and is not sent to the model. The model specification accepted by fit_models is given in S1.4.')
-    table = add_table(d, title, header, rows,
-                      f'{note} {abbreviations([title, *header, *(c for r in rows for c in r)], WT="weight")}',
-                      [0.9, 1.2, 3.35, 1.05], size=8, literal=True)
+    tbl = table(d, title, header, rows,
+                f'{note} {abbreviations([title, *header, *(c for r in rows for c in r)], WT="weight")}',
+                [0.78, 1.27, 2.68, 1.27], size=9, literal=True)
     for first, last in spans:            # one group label per group: merge its cells of the Group column
         if last > first:
-            table.cell(first, 0).merge(table.cell(last, 0))
+            tbl.cell(first, 0).merge(tbl.cell(last, 0))
     heading(d, 'S1.4 Model specification schema', 3)
     text(d, 'JSON schema of one model specification (an item of fit_models.models). Specifications are validated '
             'against this schema and additional semantic checks before fitting.')
@@ -222,13 +251,11 @@ def s1():
                'agent', 3)
     for name in LABEL:
         v = DATASETS[name]
-        text(d, f'**{LABEL[name]}**')
+        group_label(d, LABEL[name])
         labeled(d, 'Description given to the agent: ', v['description'])
         labeled(d, 'Expert statement (expert-statement condition): ', v['knowledge'])
         if v.get('misleading_knowledge'):
             labeled(d, 'Misleading statement (misleading-statement condition): ', v['misleading_knowledge'])
-        d.add_paragraph()
-    save(d, 'S1')
 
 
 def over_time(max_hours):
@@ -320,8 +347,8 @@ def clinical():
             f"{n['v3_conc_diff_max']}%)")
 
 
-def s2():
-    d = new_doc('S2')
+def s2(d):
+    section(d, 'S2')
     st, b = Settings(), Budget()
     heading(d, 'S2.1 Settings of the benchmark runs', 3)
     items = [
@@ -387,7 +414,7 @@ def s2():
         clinical(),
     ]
     for k, v in items:
-        labeled(d, f'{k}: ', f'{v}.', 10, bold=True)
+        labeled(d, f'{k}: ', f'{v}.', bold=True)
     heading(d, 'S2.2 PKPy2 fits of the reference models', 3)
     ref = pd.read_csv(BENCH / 'evaluation' / 'reference_table.csv')
     for name in LABEL:                          # the table must come from the current reference fits
@@ -416,10 +443,10 @@ def s2():
             'subjects. Oral MM: exponential IIV on Ka, V, VMAX, and KM, as in the simulation, and exponential '
             '(log-normal) residual error (S2.1, oral MM residual model); geometric means of the simulated individual '
             'values in the subset were Ka 0.98 1/h, V 67.2 L, VMAX 981 µg/h, KM 232 µg/L.')
-    add_table(d, title, header, rows,
-              note + ' ' + abbreviations([title, *header, *(c for r in rows for c in r), note],
-                                         RSE='relative standard error (– when not available)'),
-              [1.2, 2.2, .9, .9, .6, .7], size=8.5)
+    table(d, title, header, rows,
+          note + ' ' + abbreviations([title, *header, *(c for r in rows for c in r), note],
+                                     RSE='relative standard error (– when not available)'),
+          [1.05, 1.75, .9, .95, .6, .75])
     ev_path = BENCH / 'evaluation' / 'effect_evidence.json'
     if ev_path.exists():
         ev = json.loads(ev_path.read_text(encoding='utf-8'))
@@ -433,10 +460,9 @@ def s2():
         note = ('Thresholds of the agent: 3.84 for inclusion (P < 0.05) and 6.63 for retention (P < 0.01). The '
                 'phenobarbital weight exponents are fixed at 1, so their OFV changes are descriptive. Relationships '
                 'are written parameter~covariate.')
-        add_table(d, title, header, rows,
-                  note + ' ' + abbreviations([title, *header, *(c for r in rows for c in r), note]),
-                  [1.5, 2.0, 1.2, 1.0], size=8.5)
-    save(d, 'S2')
+        table(d, title, header, rows,
+              note + ' ' + abbreviations([title, *header, *(c for r in rows for c in r), note]),
+              [1.5, 2.1, 1.3, 1.1])
 
 
 APGR_LT5 = re.compile(r'^\s*(where\(\s*)?APGR\s*<\s*5(?![0-9.])')     # agent-made indicators of Apgar score < 5
@@ -522,8 +548,8 @@ def check_reference_ofv(runs):
                              'rerun benchmarks/evaluate.py')
 
 
-def s3():
-    d = new_doc('S3')
+def s3(d):
+    section(d, 'S3')
     st, b = Settings(), Budget()
     runs = pd.read_csv(BENCH / 'evaluation' / 'runs.csv')
     order = dict(dataset=['pheno', 'remifentanil', 'oral_mm'], condition=['none', 'knowledge', 'misleading'],
@@ -594,10 +620,13 @@ def s3():
             f'{st.bootstrap_seconds / 60:g}-minute tool limit; Hours left, of the {b.max_hours:g}-hour budget at '
             'finalization; CP, plasma concentration output; Rep, replicate; relationships are written '
             f'parameter~covariate(form). {vpc_note}.{se_note}')
-    add_table(d, title, header, rows,
-              note + ' ' + abbreviations([title, *header, *(c for r in rows for c in r)],
-                                         skip=('CP', 'Rep', 'RSE', 'η-shr.')),
-              [.7, .6, .6, .3, 1.9, .5, .5, .4, .4, .4, .3, .5, .3, .3, .4, .4, .4], size=6.5, literal=True)
+    # 17 columns on the portrait page: 6 pt with narrow cell margins; each column is as wide as its longest word (the
+    # header words included), and the final model takes the rest of the 6.0 in
+    table(d, title, header, rows,
+          note + ' ' + abbreviations([title, *header, *(c for r in rows for c in r)],
+                                     skip=('CP', 'Rep', 'RSE', 'η-shr.')),
+          [.54, .44, .37, .22, 1.06, .31, .31, .25, .26, .29, .21, .43, .21, .26, .30, .30, .24], size=6,
+          literal=True, cell_margin=.025)
 
     # Table S5: tool use and covariate tests
     rows = []
@@ -624,9 +653,9 @@ def s3():
             'relationship), extracted from the model registry; relationships are written parameter~covariate, form in '
             'parentheses; APGR<5, indicator for Apgar score below 5; for oral MM, CL~DOSE was tested in models with '
             'linear elimination, the other DOSE relationships in Michaelis–Menten models.')
-    add_table(d, title, header, rows,
-              note + ' ' + abbreviations([title, *header, *(c for r in rows for c in r)], skip=('APGR<5',)),
-              [.8, .7, .7, .3, .5, .4, .6, .6, 3.0], size=7, literal=True)
+    table(d, title, header, rows,
+          note + ' ' + abbreviations([title, *header, *(c for r in rows for c in r)], skip=('APGR<5',)),
+          [.8, .67, .57, .37, .52, .42, .66, .55, 1.44], size=8, literal=True)
 
     scm_path = BENCH / 'evaluation' / 'scm_baseline.json'
     bb_path = BENCH / 'evaluation' / 'backward_baseline.json'
@@ -640,14 +669,14 @@ def s3():
             labeled(d, f'{LABEL[ds]} (stepwise covariate modeling). ',
                     (f"Base OFV {v['base_ofv']:.2f}; final OFV {v['final_ofv']:.2f}; retained: "
                      f"{', '.join(v['included']) or 'none'}; {v['fits']} fits. Steps: {desc}.")
-                    .replace('APGR_LT5=1(categorical)', 'APGR<5'), 9, bold=True)
+                    .replace('APGR_LT5=1(categorical)', 'APGR<5'), bold=True)
     if bb_path.exists():
         for ds, v in json.loads(bb_path.read_text(encoding='utf-8')).items():
             steps = '; '.join(f"step {h['step']}: " + ', '.join(f"{k} {x:.1f}" for k, x in h['tests'].items() if x is not None)
                               for h in v['history'])
             labeled(d, f'{LABEL[ds]} (backward elimination from the reference model). ',
                     f"Removed: {', '.join(v.get('removed', [])) or 'none'}; retained: "
-                    f"{', '.join(v.get('retained', []))}. OFV increase on removal at each step: {steps}.", 9, bold=True)
+                    f"{', '.join(v.get('retained', []))}. OFV increase on removal at each step: {steps}.", bold=True)
 
     heading(d, 'S3.2 Statements referring to prior knowledge of the data or their analysis', 3)
     recall = json.loads((HERE / 'build' / 'recall.json').read_text(encoding='utf-8'))
@@ -671,40 +700,46 @@ def s3():
                                                                                    'rep']].values))
         scope += (f" {who} with the misleading statement contained matches of the same kind "
                   f"({', '.join(repr(t) for t in terms)}).")
-    text(d, scope, 10)
+    text(d, scope)
     for key, hits in sorted(recall.items(), key=lambda kv: keys.index(tuple(kv[0].split('/')))):
         if not hits:
             continue
         ds, cond, llm, rep = key.split('/')
-        text(d, f'**{LABEL[ds]}, {COND[cond]}, {LLM[llm]}, replicate {rep[3:]}**', 10)
+        group_label(d, f'{LABEL[ds]}, {COND[cond]}, {LLM[llm]}, replicate {rep[3:]}')
         for h in hits:
-            verbatim(d, f"Turn {h['turn']} ({h['term']}): …{clean_context(h['context'], h['term'])}…", 9)
+            verbatim(d, f"Turn {h['turn']} ({h['term']}): …{clean_context(h['context'], h['term'])}…")
 
     heading(d, 'S3.3 Final reports', 3)
-    text(d, 'The structured report submitted by the agent with its final model (verbatim).', 10)
+    text(d, 'The structured report submitted by the agent with its final model (verbatim).')
     for key in keys:
         res = json.loads((run_dir(*key) / 'results.json').read_text(encoding='utf-8'))
         rep = (res.get('final_model') or {}).get('report') or {}
-        text(d, f"**{LABEL[key[0]]}, {COND[key[1]]}, {LLM[key[2]]}, replicate {key[3][3:]}**", 10)
+        group_label(d, f"{LABEL[key[0]]}, {COND[key[1]]}, {LLM[key[2]]}, replicate {key[3][3:]}")
         for k in REPORT_FIELDS:
             if rep.get(k):
-                labeled(d, f"{k.replace('_', ' ').capitalize()}. ", rep[k], 9)
-    save(d, 'S3')
+                labeled(d, f"{k.replace('_', ' ').capitalize()}. ", rep[k], small=True)
 
 
 def main():
+    """All three sections in one document on the supplement template; the file is saved only when every section was
+    built (each section is still attempted, so that all problems are reported at once)."""
     OUT.mkdir(exist_ok=True)
-    built, failed = [], []
-    for build in (s1, s2, s3):         # each file is built even if another one cannot be
+    d = base_document('supplement')
+    failed = []
+    for build in (s1, s2, s3):
         try:
-            build()
-            built.append(f'Supplementary_Material_{build.__name__.upper()}.docx')
+            build(d)
         except SystemExit as e:
-            failed.append(f'Supplementary_Material_{build.__name__.upper()}.docx NOT BUILT (the previous file is '
-                          f'unchanged): {e}')
-    print('wrote', *built)
+            failed.append(f'Supplementary Material {build.__name__.upper()}: {e}')
     if failed:
-        raise SystemExit('\n'.join(failed))
+        raise SystemExit(f'{FILE} NOT BUILT (the previous file is unchanged):\n' + '\n'.join(failed))
+    set_properties(d, f'Supplementary Material: {TITLE}')
+    save_docx(d, OUT / FILE)
+    print('wrote', OUT / FILE)
+    stale = [name for name in OLD_FILES if (OUT / name).exists()]
+    if stale:
+        print(f'WARNING: {", ".join(stale)} in {OUT} are from the earlier layout with one file per section and are '
+              f'not updated; {FILE} replaces them.')
 
 
 if __name__ == '__main__':

@@ -1,16 +1,25 @@
 """Build the Clinical Pharmacology & Therapeutics submission of the PKAgent manuscript.
 
 Input: paper/manuscript_cpt.md (body), paper/build/numbers.json and table2.json (python paper/manuscript_numbers.py),
-paper/misleading_text.json (prose about the misleading-sentence runs, once they exist), paper/figures/Figure_<n>.pdf and
-.tiff, paper/figures/alt_text.txt.
-Output: paper/submission_cpt/ with the manuscript (DOCX: title page, abstract, text, study highlights, statements,
-references, tables, figure legends), the figures and their alternative text as separate files, and the cover letter.
+paper/misleading_text.json (prose about the misleading-sentence runs, once they exist), paper/figures/Figure_<n>.png,
+.pdf and .tiff, paper/figures/alt_text.txt, and paper/templates/manuscript_template.docx (python
+paper/templates/make_templates.py).
+Output: paper/submission_cpt/ with the manuscript (DOCX: title, author, affiliation and corresponding author; abstract
+and keywords; text; study highlights; statements; supporting information; references; tables; figure captions; the
+figures), the figures and their alternative text as separate files, and the cover letter; the figures embedded in the
+manuscript are 300-dpi copies written to paper/build/.
 
-CPT conventions applied: 12-point Times New Roman, double spacing, 1-inch margins, US Letter, page and line numbers;
-citations as superscript numbers after punctuation, numbered in order of first citation; tables after the references,
-one per page, with at most 130 characters per row (the final build is refused otherwise); figure legends after the
-tables. Headings use the Word styles Heading 1 (main headings, capitals) and Heading 2 (subheadings, sentence case),
-restyled to the body font, so that the navigation pane and PDF bookmarks work.
+Format: that of the author's earlier paper, from paper/templates/manuscript_template.docx: US Letter, margins 1.25 in
+left and right and 1.0 in top and bottom, no header, footer, page or line numbers; Times New Roman 11 pt, line spacing
+1.15, 10 pt after each paragraph; every paragraph in the Normal style with direct formatting: title 13 pt bold, section
+headings 12 pt bold ('1. Introduction'), subsection headings bold ('2.1 Estimation Engine'), the template's grid table
+style, and, after the figure captions, each figure 6.0 in wide with a short centered caption.
+CPT conventions kept: citations as superscript numbers after punctuation, numbered in order of first citation, and the
+CPT reference style; keywords, Study Highlights, Acknowledgments, and the corresponding author's postal address. The CPT
+limits (words, references, figures and tables, 130 characters per table row) are checked and printed in the console,
+not written in the document; the final build is refused when one is exceeded or a claim check fails. Word's own count
+of the main text, which includes the template's section numbers, is printed too, with a warning (not a refusal) when it
+is over 4,000 words.
 """
 import json
 import re
@@ -19,11 +28,10 @@ import sys
 from pathlib import Path
 
 import docx
-from docx.enum.section import WD_ORIENT
-from docx.enum.text import WD_COLOR_INDEX, WD_LINE_SPACING
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-from docx.shared import Inches, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_COLOR_INDEX
+from docx.oxml import OxmlElement, parse_xml
+from docx.oxml.ns import nsdecls, qn
+from docx.shared import Inches, Pt
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -31,7 +39,10 @@ from references_cpt import REFERENCES                      # noqa: E402
 
 BUILD = HERE / 'build'
 OUT = HERE / 'submission_cpt'
+TEMPLATES = HERE / 'templates'
 MAX_TABLE_ROW = 130                              # CPT: 'restrict the number of characters per row to 130'
+FIGURE_WIDTH = 6.0                               # inches, the text width of the template
+FIGURE_DPI = 300                                 # resolution of the figures embedded in the manuscript
 
 TITLE = 'PKAgent: Expert Knowledge Versus Data in Population Pharmacokinetic Modeling by a Large Language Model Agent'
 AUTHORS = [('Hyunseung Kong', 1)]
@@ -48,7 +59,21 @@ AI_DISCLOSURE = ('[To be completed by the author: disclosure of any use of artif
                  'this manuscript, as required by the journal (tool name and version, date of use, role, and how the '
                  'author reviewed the output). The language models evaluated in this study are described in Methods.]')
 
-NBSP = '\u00a0'                                 # no-break space
+# headings of paper/manuscript_cpt.md as printed (the template's wording); the main sections are numbered
+HEADINGS = {'ABSTRACT': 'Abstract', 'INTRODUCTION': 'Introduction', 'METHODS': 'Methods', 'RESULTS': 'Results',
+            'DISCUSSION': 'Discussion', 'CONCLUSION': 'Conclusion', 'STUDY HIGHLIGHTS': 'Study Highlights',
+            'ACKNOWLEDGMENTS': 'Acknowledgments', 'CONFLICT OF INTEREST': 'Conflict of Interest Statement',
+            'FUNDING': 'Funding', 'AUTHOR CONTRIBUTIONS': 'Author Contributions',
+            'DATA AVAILABILITY STATEMENT': 'Data Availability Statement',
+            'SUPPLEMENTARY MATERIAL': 'Supporting Information', 'FIGURE LEGENDS': 'Figure captions'}
+NUMBERED = ('INTRODUCTION', 'METHODS', 'RESULTS', 'DISCUSSION', 'CONCLUSION')
+# after the Conclusion, in the order of the template (Study Highlights and Acknowledgments added for CPT)
+BACK_MATTER = ('STUDY HIGHLIGHTS', 'ACKNOWLEDGMENTS', 'CONFLICT OF INTEREST', 'FUNDING', 'AUTHOR CONTRIBUTIONS',
+               'DATA AVAILABILITY STATEMENT', 'SUPPLEMENTARY MATERIAL')
+SMALL_WORDS = {'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'nor', 'of', 'on', 'or', 'the', 'to',
+               'versus', 'vs', 'with'}
+
+NBSP = ' '                                 # no-break space
 CITE = re.compile(r'\s*\[([A-Za-z0-9]+(?:;\s*[A-Za-z0-9]+)*)\]([.,;:])?')
 
 
@@ -107,89 +132,44 @@ class Citations:
         return CITE.sub(repl, text)
 
 
+def title_case(text):
+    """'Benchmark datasets and reference models' -> 'Benchmark Datasets and Reference Models'; words with a capital
+    letter (PKAgent, PKPy2, MM, VPC) are kept as written."""
+    out = []
+    for i, word in enumerate(text.split(' ')):
+        if any(c.isupper() for c in word) or (i and word.lower() in SMALL_WORDS):
+            out.append(word)
+        else:
+            out.append(word[:1].upper() + word[1:])
+    return ' '.join(out)
+
+
+def plain(text):
+    """Text without the inline markup of add_inline."""
+    text = re.sub(r'\*\*([^*]+)\*\*|\*([^*]+)\*', lambda m: m.group(1) or m.group(2), text)
+    return re.sub(r'\^\{[^}]+\}|⟦/?HL⟧', '', text)
+
+
 # ------------------------------------------------------------------ DOCX helpers
-def base_document():
-    d = docx.Document()
-    st = d.styles['Normal']
-    st.font.name = 'Times New Roman'
-    st.font.size = Pt(12)
-    st.element.rPr.rFonts.set(qn('w:eastAsia'), 'Times New Roman')
-    pf = st.paragraph_format
-    pf.line_spacing_rule = WD_LINE_SPACING.DOUBLE
-    pf.space_after = Pt(0)
-    pf.space_before = Pt(0)
-    style_headings(d)
-    sec = d.sections[0]
-    sec.page_width, sec.page_height = Inches(8.5), Inches(11)
-    for side in ('left_margin', 'right_margin', 'top_margin', 'bottom_margin'):
-        setattr(sec, side, Inches(1))
-    line_numbers(sec)
-    page_numbers(sec)
+def base_document(template='manuscript'):
+    """A new document on paper/templates/<template>_template.docx ('manuscript' or 'supplement'; the format of the
+    author's earlier paper: page, margins, styles, table style), with the template's empty body removed."""
+    path = TEMPLATES / f'{template}_template.docx'
+    if not path.exists():
+        raise SystemExit(f'{path.relative_to(HERE.parent).as_posix()} does not exist: run '
+                         'python paper/templates/make_templates.py')
+    d = docx.Document(str(path))
+    body = d.element.body
+    for el in list(body):
+        if el.tag != qn('w:sectPr'):
+            body.remove(el)
     return d
 
 
-def style_headings(d):
-    """Restyle the built-in Heading 1 and Heading 2 (which keep their outline levels) to Times New Roman 12 pt bold
-    black, double spaced, with no space before or after; the template's theme fonts and colors would override the
-    font name and color, so their attributes are removed."""
-    for name in ('Heading 1', 'Heading 2'):
-        st = d.styles[name]
-        st.font.name = 'Times New Roman'
-        st.font.size = Pt(12)
-        st.font.bold = True
-        st.font.italic = False
-        st.font.color.rgb = RGBColor(0, 0, 0)
-        rpr = st.element.rPr
-        fonts = rpr.rFonts
-        for attr in ('w:asciiTheme', 'w:hAnsiTheme', 'w:eastAsiaTheme', 'w:cstheme'):
-            fonts.attrib.pop(qn(attr), None)
-        for attr in ('w:ascii', 'w:hAnsi', 'w:eastAsia', 'w:cs'):
-            fonts.set(qn(attr), 'Times New Roman')
-        color = rpr.find(qn('w:color'))
-        for attr in ('w:themeColor', 'w:themeShade', 'w:themeTint'):
-            color.attrib.pop(qn(attr), None)
-        szcs = rpr.find(qn('w:szCs'))
-        if szcs is not None:
-            szcs.set(qn('w:val'), '24')
-        pf = st.paragraph_format
-        pf.space_before = pf.space_after = Pt(0)
-        pf.line_spacing_rule = WD_LINE_SPACING.DOUBLE
-        pf.keep_with_next = True
-
-
-def word_2013_layout(d):
-    """Compatibility mode 15 (Word 2013 and later) instead of the template's mode 14."""
-    for cs in d.settings.element.find(qn('w:compat')).findall(qn('w:compatSetting')):
-        if cs.get(qn('w:name')) == 'compatibilityMode':
-            cs.set(qn('w:val'), '15')
-
-
-def line_numbers(section):
-    """Continuous line numbers; w:lnNumType goes before w:pgNumType, w:cols and w:docGrid (schema order)."""
-    ln = OxmlElement('w:lnNumType')
-    ln.set(qn('w:countBy'), '1')
-    ln.set(qn('w:restart'), 'continuous')
-    ln.set(qn('w:distance'), '360')
-    section._sectPr.insert_element_before(
-        ln, 'w:pgNumType', 'w:cols', 'w:formProt', 'w:vAlign', 'w:noEndnote', 'w:titlePg', 'w:textDirection',
-        'w:bidi', 'w:rtlGutter', 'w:docGrid', 'w:printerSettings', 'w:sectPrChange')
-
-
-def page_numbers(section):
-    p = section.footer.paragraphs[0]
-    p.alignment = 1
-    p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
-    p.paragraph_format.space_after = Pt(0)
-    run = p.add_run()
-    for tag, text in (('begin', None), (None, 'PAGE'), ('end', None)):
-        if tag:
-            el = OxmlElement('w:fldChar')
-            el.set(qn('w:fldCharType'), tag)
-        else:
-            el = OxmlElement('w:instrText')
-            el.set(qn('xml:space'), 'preserve')
-            el.text = text
-        run._r.append(el)
+def text_width(d):
+    """Width of the text column of the last section in inches (6.0 in the template)."""
+    sec = d.sections[-1]
+    return (sec.page_width - sec.left_margin - sec.right_margin) / 914400
 
 
 INLINE = re.compile(r'(\*\*[^*]+\*\*|\*[^*]+\*|\^\{[^}]+\}|<[^>]+>|⟦HL⟧.*?⟦/HL⟧)')
@@ -225,6 +205,58 @@ def add_inline(p, text, size=None, bold=False, literal=False):
     return p
 
 
+def paragraph(d, text='', size=None, bold=False, before=None, after=None, center=False, keep_next=False):
+    """A Normal paragraph with direct formatting, as every paragraph of the template: space before and after in
+    points (None: the template's 0 and 10 pt), centered or left aligned; text with the markup of add_inline."""
+    p = d.add_paragraph()
+    pf = p.paragraph_format
+    if before is not None:
+        pf.space_before = Pt(before)
+    if after is not None:
+        pf.space_after = Pt(after)
+    if center:
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if keep_next:
+        pf.keep_with_next = True
+    if text:
+        add_inline(p, text, size=size, bold=bold)
+    return p
+
+
+def _add_ppr(p, tag, successors, **attrs):
+    """Insert a child element into the paragraph properties in schema order."""
+    el = OxmlElement(tag)
+    for k, v in attrs.items():
+        el.set(qn(k), v)
+    p._p.get_or_add_pPr().insert_element_before(el, *successors)
+    return el
+
+
+def heading(d, text, level, new_page=False):
+    """Level 2: section heading, 12 pt bold, 10 pt before and 4 pt after ('Abstract', '1. Introduction'); level 3:
+    subsection heading, bold at body size, 8 pt before and 2 pt after ('2.1 Estimation Engine'); numbers are part of
+    the text, as in the template. As in the template, headings are Normal paragraphs with direct formatting; an outline
+    level keeps the navigation pane and PDF bookmarks working, and each heading is kept with the next paragraph.
+    new_page starts the heading on a new page."""
+    big = level <= 2
+    p = paragraph(d, before=10 if big else 8, after=4 if big else 2, keep_next=True)
+    if new_page:
+        p.paragraph_format.page_break_before = True
+    _add_ppr(p, 'w:outlineLvl', ('w:divId', 'w:cnfStyle', 'w:rPr', 'w:sectPr', 'w:pPrChange'),
+             **{'w:val': '0' if big else '1'})
+    add_inline(p, text, size=12 if big else None, bold=True)
+    return p
+
+
+def save_docx(d, path):
+    """Save the document, or stop with a clear message when the file is open in Word (which locks it)."""
+    try:
+        d.save(path)
+    except PermissionError:
+        raise SystemExit(f'cannot write {path}: the file is open in another program (Word locks it); close it and '
+                         'run the build again') from None
+
+
 def set_properties(d, title):
     """Document properties of a submission file (python-docx otherwise keeps those of its template)."""
     import datetime as dt
@@ -236,16 +268,6 @@ def set_properties(d, title):
     cp.created = cp.modified = now
     cp.revision = 1
     return d
-
-
-def heading(d, text, level, new_page=False):
-    """Level 2 ('## ', main headings in capitals) uses Heading 1, level 3 ('### ', subheadings in sentence case)
-    Heading 2. new_page starts the heading on a new page (instead of an empty paragraph with a page break)."""
-    p = d.add_paragraph(text, style='Heading 1' if level == 2 else 'Heading 2')
-    p.paragraph_format.keep_with_next = True
-    if new_page:
-        p.paragraph_format.page_break_before = True
-    return p
 
 
 # ------------------------------------------------------------------ tables
@@ -269,21 +291,29 @@ def table1_rows(cites):
     return [[label[k], design[k], reference[k]] for k in label]
 
 
-def add_table(d, title, header, rows, footnote, widths, size=9, literal=False, note_size=10,
-              note_spacing=WD_LINE_SPACING.SINGLE, fixed=False, new_page=False):
-    """literal=True adds the body cells verbatim (no markup); title, header and footnote keep the markup.
-    fixed=True fixes the column widths (autofit off, tblGrid equal to the cell widths) within the 9-inch text width of
-    a landscape page. new_page starts the title on a new page. Returns the table. (The title is not set to keep with
-    next: Word in compatibility mode 15 hangs exporting a PDF when it is, before a fixed-width table.)"""
-    p = d.add_paragraph()
-    add_inline(p, title)
-    if new_page:
-        p.paragraph_format.page_break_before = True
+def add_table(d, title, header, rows, footnote, widths, size=None, literal=False, note_size=None, note_spacing=None,
+              fixed=False, new_page=False, cell_margin=None):
+    """Caption, table and note in the format of the template. The caption (title) is one bold paragraph, 8 pt before
+    and 2 pt after; it is left out when title is empty (a caller that writes its own heading). The table has the
+    template's grid table style, a bold header row repeated on each page, and cells single spaced without space after
+    (from the table style); size is the cell font size in points (None: the body size, 11 pt). literal=True adds the
+    body cells verbatim (no markup); title, header and footnote keep the markup. The note is a Normal paragraph;
+    note_size (points) and note_spacing (a WD_LINE_SPACING value) change it. widths are the column widths in inches;
+    fixed=True fixes them (autofit off, tblGrid equal to the cell widths), and they must then fit the text width.
+    cell_margin sets the left and right cell margins in inches (None: those of the table style). new_page starts the
+    caption on a new page. Returns the table."""
+    if title:
+        p = paragraph(d, before=8, after=2)
+        add_inline(p, title, bold=True)
+        if new_page:
+            p.paragraph_format.page_break_before = True
     t = d.add_table(rows=1, cols=len(header))
-    t.style = 'Table Grid'
+    t.style = d.styles['Table Grid']
+    if new_page and not title:
+        t.rows[0].cells[0].paragraphs[0].paragraph_format.page_break_before = True
     for cell, h in zip(t.rows[0].cells, header):
-        cell.paragraphs[0].text = ''
         add_inline(cell.paragraphs[0], h, size=size, bold=True)
+    t.rows[0]._tr.get_or_add_trPr().append(OxmlElement('w:tblHeader'))
     for row in rows:
         cells = t.add_row().cells
         for cell, v in zip(cells, row):
@@ -291,20 +321,24 @@ def add_table(d, title, header, rows, footnote, widths, size=9, literal=False, n
     for row in t.rows:
         for cell, w in zip(row.cells, widths):
             cell.width = Inches(w)
-            for par in cell.paragraphs:
-                par.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+    for gc, w in zip(t._tbl.tblGrid.findall(qn('w:gridCol')), widths):
+        gc.set(qn('w:w'), str(round(w * 1440)))
     if fixed:
-        if sum(widths) > 9.0 + 1e-9:
-            raise ValueError(f'column widths sum to {sum(widths):.2f} in > 9.0 in')
+        if sum(widths) > text_width(d) + 1e-9:
+            raise ValueError(f'column widths sum to {sum(widths):.2f} in > {text_width(d):.2f} in (text width)')
         t.autofit = False
-        for gc, w in zip(t._tbl.tblGrid.findall(qn('w:gridCol')), widths):
-            gc.set(qn('w:w'), str(round(w * 1440)))
         tblw = t._tbl.tblPr.find(qn('w:tblW'))
         tblw.set(qn('w:type'), 'dxa')
         tblw.set(qn('w:w'), str(sum(round(w * 1440) for w in widths)))
-    p = d.add_paragraph()
-    add_inline(p, footnote, size=note_size)
-    p.paragraph_format.line_spacing_rule = note_spacing
+    if cell_margin is not None:
+        mar = parse_xml(f'<w:tblCellMar {nsdecls("w")}><w:left w:w="{round(cell_margin * 1440)}" w:type="dxa"/>'
+                        f'<w:right w:w="{round(cell_margin * 1440)}" w:type="dxa"/></w:tblCellMar>')
+        t._tbl.tblPr.insert_element_before(mar, 'w:tblLook', 'w:tblCaption', 'w:tblDescription', 'w:tblPrChange')
+    if footnote:
+        p = paragraph(d)
+        add_inline(p, footnote, size=note_size)
+        if note_spacing is not None:
+            p.paragraph_format.line_spacing_rule = note_spacing
     return t
 
 
@@ -313,30 +347,47 @@ def chars_per_row(t):
     return [sum(len(c.text.replace('\n', ' ')) for c in r.cells) for r in t.rows]
 
 
-def _new_section(d):
-    """python-docx ends the current section with a new empty paragraph; move its sectPr into the preceding paragraph,
-    so that a section break adds no (line-numbered) blank line."""
-    sec = d.add_section()
-    sect_p = d.element.body[-2]                      # the new paragraph; body[-1] is the document's final sectPr
-    prev = sect_p.getprevious()
-    if prev is not None and prev.tag == qn('w:p') and not prev.xpath('./w:pPr/w:sectPr'):
-        prev.set_sectPr(sect_p.pPr.sectPr)
-        sect_p.getparent().remove(sect_p)
-    return sec
+# ------------------------------------------------------------------ figures
+def figure_png(n):
+    """Copy of paper/figures/Figure_<n>.png at FIGURE_DPI for FIGURE_WIDTH inches, on white, in paper/build/."""
+    from PIL import Image
+    src, dst = HERE / 'figures' / f'Figure_{n}.png', BUILD / f'Figure_{n}_{FIGURE_DPI}dpi.png'
+    im = Image.open(src)
+    if im.mode != 'RGB':
+        im = im.convert('RGBA')
+        white = Image.new('RGBA', im.size, (255, 255, 255, 255))
+        im = Image.alpha_composite(white, im).convert('RGB')
+    px = round(FIGURE_WIDTH * FIGURE_DPI)
+    im.resize((px, round(im.height * px / im.width)), Image.LANCZOS).save(dst, dpi=(FIGURE_DPI, FIGURE_DPI),
+                                                                          optimize=True)
+    return dst
 
 
-def landscape_section(d):
-    sec = _new_section(d)
-    sec.orientation = WD_ORIENT.LANDSCAPE
-    sec.page_width, sec.page_height = Inches(11), Inches(8.5)
-    return sec
+def alt_texts():
+    """{'Figure 1': text, ...} from paper/figures/alt_text.txt (a heading line per image, then its text)."""
+    out = {}
+    for block in re.split(r'\n\s*\n', (HERE / 'figures' / 'alt_text.txt').read_text(encoding='utf-8')):
+        lines = block.strip().splitlines()
+        m = re.match(r'(Figure \d+|Graphical abstract) \(', lines[0]) if lines else None
+        if m and len(lines) > 1:
+            out[m.group(1)] = ' '.join(line.strip() for line in lines[1:])
+    return out
 
 
-def portrait_section(d):
-    sec = _new_section(d)
-    sec.orientation = WD_ORIENT.PORTRAIT
-    sec.page_width, sec.page_height = Inches(8.5), Inches(11)
-    return sec
+def add_figure(d, n, legend, alt):
+    """Figure n as in the template: an empty centered paragraph, the image centered and FIGURE_WIDTH wide (with its
+    alternative text), and a centered 10 pt caption 'Figure n. <first sentence of the legend>', kept together."""
+    paragraph(d, center=True, keep_next=True)
+    p = paragraph(d, center=True, keep_next=True)
+    run = p.add_run()
+    run.add_picture(str(figure_png(n)), width=Inches(FIGURE_WIDTH))
+    inline = run._r.find('.//' + qn('wp:inline'))
+    inline.docPr.set('name', f'Figure {n}')
+    if alt:
+        inline.docPr.set('descr', alt)
+        inline.find('.//' + qn('pic:cNvPr')).set('descr', alt)
+    first = re.split(r'(?<=\.)\s+(?=[A-Z(])', plain(legend).strip(), maxsplit=1)[0]
+    paragraph(d, f'Figure {n}. {first}', size=10, center=True)
 
 
 # ------------------------------------------------------------------ build
@@ -368,6 +419,18 @@ def words(text):
     return len(re.findall(r"[A-Za-z0-9][A-Za-z0-9'’.,/–-]*", text))
 
 
+def word_count_as_word(d, start='1. Introduction', stop='Study Highlights'):
+    """Words of the built document from the heading `start` up to the heading `stop`, counted as Word's word count does:
+    strings between spaces, with en and em dashes also separating words ('Michaelis–Menten', and the citation range
+    '8–12' after 'models;'), and the section numbers ('2.1') as words. This reproduced Word's own count
+    (Range.ComputeStatistics) paragraph by paragraph for the Introduction to the Conclusion of this manuscript."""
+    texts = [p.text for p in d.paragraphs]
+    if start not in texts or stop not in texts:
+        raise SystemExit(f'word count: heading {start!r} or {stop!r} not found in the manuscript')
+    i = texts.index(start)
+    return sum(len([w for w in re.split(r'[\s–—]+', t) if w]) for t in texts[i:texts.index(stop, i)])
+
+
 def main():
     numbers = json.loads((BUILD / 'numbers.json').read_text(encoding='utf-8'))
     table2 = json.loads((BUILD / 'table2.json').read_text(encoding='utf-8'))
@@ -377,8 +440,8 @@ def main():
         numbers.update(json.loads(extra.read_text(encoding='utf-8')))
     numbers['ai_disclosure'] = f'⟦HL⟧{AI_DISCLOSURE}⟦/HL⟧'
     numbers['author_contributions'] = CONTRIBUTIONS
-    numbers['funding'] = FUNDING                         # end-matter FUNDING and CONFLICT OF INTEREST sections repeat
-    numbers['coi'] = COI                                 # the title-page sentences
+    numbers['funding'] = FUNDING                         # the Funding and Conflict of Interest Statement sections
+    numbers['coi'] = COI
 
     text = (HERE / 'manuscript_cpt.md').read_text(encoding='utf-8')
     text = conditional_blocks(text, dict(numbers, misleading=misleading))
@@ -401,9 +464,13 @@ def main():
     problems = []
     if n_words > 4000:
         problems.append(f'main text {n_words} > 4000 words')
-    n_words_h = n_words + sum(words(title) for lvl, title, paras in _between(body, 'INTRODUCTION', 'STUDY HIGHLIGHTS'))
-    print(f'main text including headings {n_words_h} words')
-    if n_words_h > 4000:                                 # what an editor's word count of the section shows
+    # the headings counted without the section numbers of the template ('2.1'), which CPT headings do not have; Word's
+    # own count of the section in the built document (section numbers included) is printed after the build and only
+    # warned about (see word_count_as_word)
+    main_headings = _between(body, 'INTRODUCTION', 'STUDY HIGHLIGHTS')
+    n_words_h = n_words + sum(words(title) for lvl, title, paras in main_headings)
+    print(f'main text including headings {n_words_h} words (without the {len(main_headings)} section numbers)')
+    if n_words_h > 4000:
         problems.append(f'main text including headings {n_words_h} > 4000 words')
     if n_abstract > 250:
         problems.append(f'abstract {n_abstract} > 250 words')
@@ -422,53 +489,68 @@ def main():
         raise SystemExit('final build refused (use --draft to build anyway): ' + '; '.join(problems))
     if AI_DISCLOSURE.lstrip().startswith('[To be completed'):          # reported, but the build is not refused
         print('WARNING: the AI-use disclosure is still a placeholder (AI_DISCLOSURE in paper/build_cpt.py; printed '
-              'highlighted in ACKNOWLEDGMENTS and in the cover letter); the author must write it before submission.')
+              'highlighted in Acknowledgments and in the cover letter); the author must write it before submission.')
     links = re.findall(r'(https://github\.com/\S+) \(tag ([^)]+)\)', text)
     print('REMINDER: before submission, these Data Availability links must exist (not checked here): '
           + '; '.join(f'{url} tag {tag}' for url, tag in links)
           + ('; the release of the first tag must carry the run logs, reference fits, and evaluation outputs.'
              if 'attached to that release' in text else '.'))
 
+    unknown = [title for lvl, title, paras in body if lvl == 2 and title not in HEADINGS]
+    if unknown:
+        raise SystemExit(f'headings of paper/manuscript_cpt.md without a place in the manuscript: {unknown}')
     d = base_document()
-    word_2013_layout(d)
-    # title page
-    p = d.add_paragraph()
-    add_inline(p, f'**{TITLE}**')
-    p = d.add_paragraph()
-    p.add_run(', '.join(f'{n}' for n, a in AUTHORS))
+    # title, author, affiliation, corresponding author (no separate title page, as in the template)
+    paragraph(d, TITLE, size=13, bold=True, before=12, after=6)
+    marks = len(AFFILIATIONS) > 1
+    names = [name + (f'^{{{a}}}' if marks else '') for name, a in AUTHORS]
+    paragraph(d, names[0] if len(names) == 1 else ', '.join(names[:-1]) + ', and ' + names[-1])
     for k, v in AFFILIATIONS.items():
-        d.add_paragraph(v)
-    p = d.add_paragraph()
-    add_inline(p, '**Corresponding author:** ' + CORRESPONDING)
-    p = d.add_paragraph()
-    add_inline(p, '**Funding:** ' + FUNDING)
-    p = d.add_paragraph()
-    add_inline(p, '**Conflict of interest:** ' + COI)
-    p = d.add_paragraph()
-    add_inline(p, '**Keywords:** ' + '; '.join(KEYWORDS))
-    p = d.add_paragraph()
-    add_inline(p, f'**Word count:** main text {n_words:,}; abstract {n_abstract}. **References:** {n_refs}. '
-                  f'**Figures:** {n_fig}. **Tables:** {n_tab}.')
+        paragraph(d, (f'^{{{k}}}' if marks else '') + v)
+    name, program, university, address, email = contact()
+    paragraph(d, f'Corresponding Author: {name} ({email}), {program}, {university}, {address}')
 
+    # abstract and keywords, then the numbered sections up to the Conclusion
+    blocks = {title: (lvl, paras) for lvl, title, paras in body}
+    section, n_sec, n_sub = None, 0, 0
     for lvl, title, paras in body:
-        if title in ('FIGURE LEGENDS', 'SUPPLEMENTARY MATERIAL'):
+        if lvl == 2:
+            section = title
+        if section in BACK_MATTER or section == 'FIGURE LEGENDS':
             continue
-        heading(d, title, lvl, new_page=title in ('ABSTRACT', 'INTRODUCTION'))
+        if lvl == 2 and title in NUMBERED:
+            n_sec, n_sub = n_sec + 1, 0
+            heading(d, f'{n_sec}. {HEADINGS[title]}', 2)
+        elif lvl == 2:
+            heading(d, HEADINGS[title], 2)
+        elif section in NUMBERED:
+            n_sub += 1
+            heading(d, f'{n_sec}.{n_sub} {title_case(title)}', 3)
+        else:
+            heading(d, title_case(title), 3)
         for t in paras:
+            add_inline(d.add_paragraph(), t)
+        if title == 'ABSTRACT':
+            paragraph(d, 'Keywords: ' + '; '.join(KEYWORDS))
+    for title in BACK_MATTER:
+        if title not in blocks:
+            continue
+        heading(d, HEADINGS[title], 2)
+        for t in blocks[title][1]:
             p = add_inline(d.add_paragraph(), t)
             if title == 'STUDY HIGHLIGHTS' and t.startswith('**'):
                 p.paragraph_format.keep_with_next = True             # keep each question with its answer
+    stray = [title for lvl, title, paras in _between(body, 'STUDY HIGHLIGHTS', None) if lvl == 3]
+    if stray:
+        raise SystemExit(f'subsections after the Conclusion are not placed in the manuscript: {stray}')
 
     # references
-    heading(d, 'REFERENCES', 2, new_page=True)
+    heading(d, 'References', 2)
     for i, k in enumerate(cites.order, 1):
-        p = d.add_paragraph()
-        p.paragraph_format.left_indent = Inches(.35)
-        p.paragraph_format.first_line_indent = Inches(-.35)
-        add_inline(p, f'{i}.\t' + REFERENCES[k].replace('<', '‹').replace('>', '›').replace('‹', '<').replace('›', '>'))
+        add_inline(d.add_paragraph(), f'{i}. {REFERENCES[k]}')
 
-    # tables (landscape, one per page); the sources cited in Table 1 keep their numbers from the text
-    landscape_section(d)
+    # tables, after a page break as in the template; the sources cited in Table 1 keep their numbers from the text
+    heading(d, 'Tables', 2, new_page=True)
     statements = json.loads((HERE.parent / 'benchmarks' / 'datasets.json').read_text(encoding='utf-8'))
     statement_note = '; '.join(f'{name}, "{statements[k]["knowledge"]}"' for k, name in
                                (('pheno', 'phenobarbital'), ('remifentanil', 'remifentanil'), ('oral_mm', 'oral MM')))
@@ -478,7 +560,7 @@ def main():
                    'CL, clearance; IV, intravenous; LBM, lean body mass; MM, Michaelis–Menten; Q2 and Q3, '
                    'intercompartmental clearances; V, V1, V2, volumes of distribution. '
                    'Details of the designs and reference models are given in Methods and Table S2.',
-                   [1.65, 3.6, 3.75], size=12, note_size=12, note_spacing=WD_LINE_SPACING.DOUBLE, fixed=True)
+                   [1.3, 2.25, 2.45], fixed=True)
     if len(cites.order) != n_refs:
         raise SystemExit(f'Table 1 cites a reference not cited in the text: {cites.order[n_refs:]}')
     header = ['Dataset, condition', 'Runs', 'Reference structure', 'Reference relationships (form)',
@@ -490,6 +572,7 @@ def main():
              'NA' if r['relationships'] == 'NA' else f"{r['relationships']} ({r['forms']})", two_lines(r['extra']),
              r['typical'], r['reproduced'], two_lines(r['delta_ofv']), two_lines(r['delta_aic'])]
             for r in table2]
+    # 8 pt with narrow cell margins, so that the longest word of each column and each range line fit the 6.0 in
     t2 = add_table(d, '**Table 2.** Final models of the agent runs compared with the reference models',
                    header, rows,
                    'AIC, Akaike information criterion; Claude, Claude Opus 5.5; GPT, GPT-6.1 Sol; MM, '
@@ -506,7 +589,7 @@ def main():
                    'reference structure, exactly the reference relationships, and agreement of typical values '
                    '(stochastic models not compared). ΔOFV and ΔAIC: final model minus the PKPy2 fit of the reference '
                    'model, whose stochastic model is given in Table S2 (data scale for log-normal error).',
-                   [1.5, .6, .84, 1.0, 1.0, .75, .95, 1.18, 1.18], size=10, note_size=12, fixed=True, new_page=True)
+                   [.74, .39, .57, .71, .71, .45, .68, .875, .875], size=8, fixed=True, cell_margin=.035)
     print('characters per row: Table 1 ' + ', '.join(map(str, chars_per_row(t1))) + '; Table 2 '
           + ', '.join(map(str, chars_per_row(t2))))
     long_rows = [f'Table {k} row {i} ({c} characters)' for k, t in ((1, t1), (2, t2))
@@ -517,17 +600,33 @@ def main():
         raise SystemExit(f'final build refused (use --draft to build anyway): table rows over {MAX_TABLE_ROW} '
                          'characters: ' + '; '.join(long_rows))
 
-    # figure legends and supplementary material
-    portrait_section(d)
-    for lvl, title, paras in body:
-        if title in ('FIGURE LEGENDS', 'SUPPLEMENTARY MATERIAL'):
-            heading(d, title, 2)
-            for t in paras:
-                add_inline(d.add_paragraph(), t)
+    # figure captions (the full legends), then the figures with their short captions (no graphical abstract)
+    legends = blocks['FIGURE LEGENDS'][1]
+    heading(d, HEADINGS['FIGURE LEGENDS'], 2)
+    for t in legends:
+        add_inline(d.add_paragraph(), t)
+    alt = alt_texts()
+    for t in legends:
+        m = re.match(r'\*\*Figure (\d+)\.\*\*\s*(.*)', t)
+        if not m:
+            raise SystemExit(f'figure legend without "**Figure n.**": {t[:60]}')
+        add_figure(d, int(m.group(1)), m.group(2), alt.get(f'Figure {m.group(1)}'))
+    if len(legends) != n_fig:
+        raise SystemExit(f'{len(legends)} figure legends, {n_fig} figures')
+    # what an editor sees in Word: the section numbers of the template and Word's splitting at dashes add words to the
+    # count checked above; reported, but the build is not refused (cutting words or keeping the numbered headings is
+    # the author's decision)
+    n_word_count = word_count_as_word(d)
+    print(f'main text as Word counts it (1. Introduction to 5. Conclusion, with headings and section numbers): '
+          f'{n_word_count} words')
+    if n_word_count > 4000:
+        print(f'WARNING: Word will count about {n_word_count:,} words for Introduction to Conclusion, over the CPT '
+              f'limit of 4,000 (the count checked above, {n_words_h:,}, leaves out the {len(main_headings)} section '
+              f'numbers and Word\'s splitting at dashes); cut about {n_word_count - 4000} words or accept the count.')
 
     OUT.mkdir(exist_ok=True)
     set_properties(d, TITLE)
-    d.save(OUT / 'PKAgent_CPT_manuscript.docx')
+    save_docx(d, OUT / 'PKAgent_CPT_manuscript.docx')
     cover_letter()
     for n in range(1, n_fig + 1):
         for ext in ('pdf', 'tiff'):
@@ -543,16 +642,23 @@ def main():
     print('wrote', OUT / 'PKAgent_CPT_manuscript.docx')
 
 
+def contact():
+    """Name, program, university, postal address, and email of the corresponding author."""
+    rest, email = CORRESPONDING.rsplit('. Email: ', 1)
+    name, program, university, address = rest.split(', ', 3)
+    return name, program, university, address, email
+
+
 def signature_lines():
     """Name, program, university, postal address, and email of the corresponding author, one per line."""
-    contact, email = CORRESPONDING.rsplit('. Email: ', 1)
-    name, program, university, address = contact.split(', ', 3)
+    name, program, university, address, email = contact()
     return [name, program, university, address, f'Email: {email}']
 
 
 def cover_letter():
-    """Business-letter layout: Letter page, 1-inch margins, Times New Roman 12 pt, single spacing with 12 pt after
-    each paragraph, page numbers in the footer, signature block on separate lines."""
+    """The letter in the typography of the manuscript template (Letter page, margins 1.25 in left and right and 1.0 in
+    top and bottom, Times New Roman 11 pt, line spacing 1.15, 10 pt after each paragraph; no page numbers), with the
+    signature block on separate lines."""
     import datetime as dt
     today = dt.date.today()
     numbers = json.loads((BUILD / 'numbers.json').read_text(encoding='utf-8'))     # run counts as in the manuscript
@@ -560,19 +666,7 @@ def cover_letter():
                   ai_disclosure=f'⟦HL⟧{AI_DISCLOSURE}⟦/HL⟧', corresponding='\n'.join(signature_lines()))
     text = (HERE / 'cover_letter_cpt.md').read_text(encoding='utf-8')
     text = re.sub(r'\{\{(\w+)\}\}', lambda m: str(values[m.group(1)]), text)
-    d = docx.Document()
-    st = d.styles['Normal']
-    st.font.name, st.font.size = 'Times New Roman', Pt(12)
-    st.element.rPr.rFonts.set(qn('w:eastAsia'), 'Times New Roman')
-    pf = st.paragraph_format
-    pf.line_spacing_rule = WD_LINE_SPACING.SINGLE
-    pf.space_before, pf.space_after = Pt(0), Pt(12)
-    sec = d.sections[0]
-    sec.page_width, sec.page_height = Inches(8.5), Inches(11)
-    for side in ('left_margin', 'right_margin', 'top_margin', 'bottom_margin'):
-        setattr(sec, side, Inches(1))
-    page_numbers(sec)
-    word_2013_layout(d)
+    d = base_document()
     for block in text.split('\n\n'):
         p = d.add_paragraph()
         for k, line in enumerate(block.strip().splitlines()):
@@ -580,7 +674,7 @@ def cover_letter():
                 p.add_run().add_break()
             add_inline(p, line)
     set_properties(d, 'Cover letter: ' + TITLE)
-    d.save(OUT / 'PKAgent_CPT_cover_letter.docx')
+    save_docx(d, OUT / 'PKAgent_CPT_cover_letter.docx')
 
 
 def _between(body, start, stop):
