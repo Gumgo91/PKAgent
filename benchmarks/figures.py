@@ -25,16 +25,28 @@ MARK = dict(gpt='o', claude='s')
 
 plt.rcParams.update({'font.size': 8, 'axes.titlesize': 9, 'axes.labelsize': 8, 'xtick.labelsize': 8,
                      'ytick.labelsize': 8, 'legend.fontsize': 8, 'axes.linewidth': .6, 'lines.linewidth': 1.,
-                     'xtick.major.width': .6, 'ytick.major.width': .6, 'pdf.fonttype': 42})
+                     'xtick.major.width': .6, 'ytick.major.width': .6, 'pdf.fonttype': 42,
+                     'font.family': 'Arial', 'mathtext.fontset': 'custom', 'mathtext.rm': 'Arial',
+                     'mathtext.it': 'Arial:italic', 'mathtext.bf': 'Arial:bold', 'text.color': '#1F2933',
+                     'axes.labelcolor': '#1F2933', 'axes.edgecolor': '#1F2933', 'xtick.color': '#1F2933',
+                     'ytick.color': '#1F2933'})
 WIDTH = 7.0                       # inches: a double-column CPT figure (178 mm)
 
 
 def tiff_cmyk(png, tiff):
     """CMYK TIFF (LZW) from a 600-dpi PNG, as CPT asks for color figures."""
-    from PIL import Image
+    from PIL import Image, ImageCms
     Image.MAX_IMAGE_PIXELS = None
+    icc = Path('C:/Windows/System32/spool/drivers/color/RSWOP.icm')   # U.S. SWOP press profile shipped with Windows
     with Image.open(png) as im:
-        im.convert('CMYK').save(tiff, compression='tiff_lzw', dpi=(600, 600))
+        rgb = im.convert('RGB')
+    if not icc.exists():                                              # no press profile: plain conversion (no black ink)
+        rgb.convert('CMYK').save(tiff, compression='tiff_lzw', dpi=(600, 600))
+        return
+    cmyk = ImageCms.profileToProfile(rgb, ImageCms.createProfile('sRGB'), str(icc), outputMode='CMYK',
+                                     renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC,
+                                     flags=ImageCms.Flags.BLACKPOINTCOMPENSATION)
+    cmyk.save(tiff, compression='tiff_lzw', dpi=(600, 600), icc_profile=icc.read_bytes())
 
 
 def _save(fig, n):
@@ -66,7 +78,7 @@ def figure_recovery(runs):
         for i, p in enumerate(params):
             if p in reference.get(ds, {}):
                 v = reference[ds][p]['median']
-                ax.plot([v, v], [i - .42, i + .42], color='#1F2933', lw=1.0, zorder=4, solid_capstyle='butt')
+                ax.plot([v, v], [i - .46, i + .46], color='#1F2933', lw=1.0, zorder=2.5, solid_capstyle='butt')
         slots = [(c, m) for c in COND for m in LLM]
         for i, p in enumerate(params):
             k = 0
@@ -81,8 +93,8 @@ def figure_recovery(runs):
                     ax.scatter([r[f'ratio_{p}_median']], [y], marker=MARK[llm], s=9, color=COLOR[cond],
                                edgecolor='white', linewidth=.4, zorder=3)
                     k += 1
-        ax.axvline(1, color='#9AA5B1', lw=.6, linestyle=':', zorder=1)
-        ax.axvspan(.8, 1.25, color='#E8F1FB', zorder=0)
+        ax.axvline(1, color='#7B8794', lw=.6, linestyle=':', zorder=1)
+        ax.axvspan(.8, 1.25, color='#DCE8F6', lw=0, zorder=0)
         ax.set_xscale('log')
         ticks = [.125, .25, .5, 1, 2]
         ax.xaxis.set_major_locator(FixedLocator(ticks))
@@ -93,10 +105,11 @@ def figure_recovery(runs):
         ax.set_yticklabels(params)
         ax.set_ylim(len(params) - .5, -.5)
         ax.set_title(LABEL.get(ds, ds))
-        ax.set_xlabel('typical value ratio\n(final / reference model)')
+        if ax is axes[0, len(names) // 2]:
+            ax.set_xlabel('typical value ratio (final / reference model)')
     handles = [plt.Line2D([], [], marker=MARK[m], color=COLOR[c], linestyle='-', label=f'{LLM[m]}, {COND[c].lower()}')
                for c in COND for m in LLM]
-    handles.append(plt.Line2D([], [], marker='|', markersize=12, markeredgewidth=1.6, color='#1F2933', linestyle='',
+    handles.append(plt.Line2D([], [], marker='|', markersize=12, markeredgewidth=1.0, color='#1F2933', linestyle='',
                               label='PKPy2 fit of the reference model'))
     fig.legend(handles=handles, loc='lower center', ncol=3, frameon=False, bbox_to_anchor=(.5, 0), columnspacing=1.2,
                handlelength=1.6)
@@ -138,8 +151,7 @@ def figure_covariates(runs):
                 color = 'white' if not forms else ('#1F2933' if REF_FORMS[ds][rel] in forms else '#9AA5B1')
                 ax.add_patch(Rectangle((j, i), .9, .9, facecolor=color, edgecolor='#52606D', lw=.6))
             extra = len([k for k in found if k not in REF_FORMS[ds]])
-            ax.text(j + .45, len(rels) + .45, str(extra), ha='center', va='center', fontsize=8,
-                    color='#B44D12')
+            ax.text(j + .45, len(rels) + .45, str(extra), ha='center', va='center', fontsize=8)
         labels = []
         for p, c in rels:
             d = dev.get(f'{p}~{c}')
@@ -174,6 +186,7 @@ def trajectory(run_dir):
 def figure_process(runs):
     """Model development (upper row: lowest OFV so far minus the OFV of the reference model, in the order of fitting;
     the final model is marked) and resources per run (lower row: fitted models, wall-clock hours, LLM fees)."""
+    from matplotlib.ticker import FuncFormatter
     names = [d for d in DATASETS if d in set(runs['dataset'])]
     ref = {d: json.loads((HERE / 'reference_fits' / d / 'reference_fit.json').read_text(encoding='utf-8'))['ofv']
            for d in names}
@@ -193,6 +206,8 @@ def figure_process(runs):
                            facecolor=COLOR[r['condition']], edgecolor='#1F2933', lw=.6)
         ax.axhline(0, color='#1F2933', lw=.8, linestyle=':')
         ax.set_yscale('symlog', linthresh=1)
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f'{v:g}'.replace('-', '\u2212')))
+        ax.set_xlim(left=0)
         ax.set_title(LABEL.get(ds, ds), loc='left')
         ax.set_xlabel('converged models')
     axes[0, 0].set_ylabel('lowest OFV so far − reference OFV')
@@ -206,9 +221,9 @@ def figure_process(runs):
         ax.set_xticks(range(len(names)))
         ax.set_xticklabels([LABEL[d].replace(' (simulated)', '') for d in names], rotation=20)
         ax.set_ylabel(lab)
-        ax.set_ylim(bottom=0)
+        ax.set_ylim(bottom=-.03 * ax.get_ylim()[1])
     from matplotlib.lines import Line2D
-    handles = [Line2D([], [], color=COLOR[c], lw=2, label=COND[c]) for c in COND] + \
+    handles = [Line2D([], [], color=COLOR[c], lw=1.0, label=COND[c]) for c in COND] + \
               [Line2D([], [], color='#52606D', marker=MARK[m], linestyle='--' if m == 'gpt' else '-', label=LLM[m])
                for m in LLM]
     fig.legend(handles=handles, loc='lower center', ncol=4, frameon=False)
