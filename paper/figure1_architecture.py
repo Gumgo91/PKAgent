@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
 """Figure 1: architecture of PKAgent as a three-layer stack.
 
-The language model (top), the PKAgent session with its 14 tools in five groups (middle) and the
+The language model (top), the PKAgent session with its tools in functional groups (middle) and the
 open-source PKPy2 engine (bottom), with the task and the data file as inputs on the left and the
 outputs of a run on the right. Vector drawing with matplotlib primitives only, created at the
-printed size (7.0 x 3.86 in, double column, Arial, text >= 8 pt) and never rescaled.
+printed size (7.0 x 3.86 in, double column, Arial, text >= 8 pt, strokes 0.5 to 1.0 pt) and never
+rescaled.
+
+Numbers come from code: the tool groups, the badge counts and the tool total from
+paper/tool_groups.py (asserted against src/pkagent/tools.py); the per-run limits from
+pkagent.config.Budget(). The language model is told the limits on fits, responses and hours (Task
+box); the fee limit is enforced by the session, which stops a run when the LLM fees exceed it (the
+model sees only the fees spent), so it is shown with the session's Budgets item.
 
 Outputs paper/figures/Figure_1.pdf (vector), Figure_1.png (600 dpi) and Figure_1.tiff (CMYK, via
 benchmarks/figures.py:tiff_cmyk). Running it also prints a text audit (every text artist with its
@@ -27,6 +34,12 @@ from matplotlib.text import Text
 HERE = Path(__file__).resolve().parent
 OUT = HERE / 'figures'
 sys.path.insert(0, str(HERE.parent / 'benchmarks'))
+sys.path.insert(0, str(HERE.parent / 'src'))
+sys.path.insert(0, str(HERE))
+from tool_groups import N_TOOLS, TOOL_GROUPS          # noqa: E402
+from pkagent.config import Budget                     # noqa: E402
+
+BUDGET = Budget()                                     # the per-run limits of every benchmark run
 
 plt.rcParams.update({
     'font.family': 'Arial',
@@ -39,15 +52,16 @@ plt.rcParams.update({
 # ---------------------------------------------------------------- palette
 TEXT = '#1F2933'
 BLUE, BLUE_T = '#4A7FB5', '#E8F1FB'
-ORANGE, ORANGE_T = '#C8801E', '#FDF1E3'
+TEAL, TEAL_T = '#2B7A8C', '#E3F1F4'      # language model (orange #C8801E is reserved for the expert statement)
 GREEN, GREEN_T, GREEN_M = '#4C8C4A', '#EEF6EE', '#D3E8D2'
 PURPLE, PURPLE_T, PURPLE_M = '#7A5BA6', '#F3EEF8', '#DCD0EC'
 GRAY, GRAY_T = '#7B8794', '#F4F5F7'
 WHITE = '#FFFFFF'
 
-LW = 1.0        # block outlines and arrows (pt)
+LW = 1.0        # block outlines, arrows and the heaviest pictogram strokes (pt; CPT: 0.5 to 1 pt)
 LW_ICON = 0.8   # pictogram strokes
 LW_THIN = 0.6   # thin rules and pictogram details
+LW_RANGE = (0.5, 1.0)
 
 # ---------------------------------------------------------------- canvas (1 data unit = 1 inch)
 W, H = 7.0, 3.86
@@ -123,7 +137,7 @@ def icon_doc(cx, cy, w, h, c, fill=WHITE, nlines=3, check=False, z=8):
     if check:
         s = w * 0.30
         bx, by = x0 + w * 0.62, y0 + h * 0.22
-        ln([bx - s * 0.5, bx - s * 0.1, bx + s * 0.6], [by + s * 0.05, by - s * 0.35, by + s * 0.55], c, 1.1,
+        ln([bx - s * 0.5, bx - s * 0.1, bx + s * 0.6], [by + s * 0.05, by - s * 0.35, by + s * 0.55], c, LW,
            z + 0.2)
 
 
@@ -212,13 +226,13 @@ def icon_gear(cx, cy, R, c, fill, z=8, n=8):
 
 def icon_nocode(cx, cy, r, c_ring, c_glyph, z=8):
     """'</>' glyph under a prohibition ring."""
-    ax.add_patch(Circle((cx, cy), r, fc=WHITE, ec=c_ring, lw=1.2, zorder=z))
+    ax.add_patch(Circle((cx, cy), r, fc=WHITE, ec=c_ring, lw=LW, zorder=z))
     g = r * 0.50
     ln([cx - g * 0.45, cx - g * 1.15, cx - g * 0.45], [cy + g * 0.6, cy, cy - g * 0.6], c_glyph, 0.9, z + 1)
     ln([cx + g * 0.45, cx + g * 1.15, cx + g * 0.45], [cy + g * 0.6, cy, cy - g * 0.6], c_glyph, 0.9, z + 1)
     ln([cx - g * 0.22, cx + g * 0.22], [cy - g * 0.75, cy + g * 0.75], c_glyph, 0.9, z + 1)
     d = r * np.cos(np.pi / 4)
-    ln([cx - d, cx + d], [cy + d, cy - d], c_ring, 1.2, z + 2)
+    ln([cx - d, cx + d], [cy + d, cy - d], c_ring, LW, z + 2)
 
 
 def icon_bubble(cx, cy, w, h, c, fill=WHITE, z=8):
@@ -279,7 +293,7 @@ def icon_audit(cx, cy, w, h, c, z=8):
     r = w * 0.20
     mx, my = cx + w * 0.16, cy - h * 0.12
     ax.add_patch(Circle((mx, my), r, fc=WHITE, ec=c, lw=LW_ICON, zorder=z + 1))
-    ln([mx + r * 0.72, mx + r * 1.75], [my - r * 0.72, my - r * 1.75], c, 1.1, z + 1)
+    ln([mx + r * 0.72, mx + r * 1.75], [my - r * 0.72, my - r * 1.75], c, LW, z + 1)
 
 
 def icon_clockcoin(cx, cy, s, c, fill, z=8):
@@ -343,7 +357,7 @@ SX0, SX1 = 1.76, 5.44           # session column (the stack)
 OX0, OX1 = 5.84, 6.96           # outputs column
 SCX = (SX0 + SX1) / 2
 EN_Y0, EN_Y1 = 0.04, 0.58       # PKPy2 engine row
-SE_Y0, SE_Y1 = 0.84, 2.16       # PKAgent session row
+SE_Y0, SE_Y1 = 0.80, 2.16       # PKAgent session row
 LM_Y0, LM_Y1 = 2.48, 3.82       # language model row
 SE_MID = (SE_Y0 + SE_Y1) / 2
 LM_MID = (LM_Y0 + LM_Y1) / 2
@@ -364,10 +378,10 @@ def draw():
     txt(tx, top - 0.685, '(optional)')
     icon_gauge(ix, top - 0.895, 0.085, BLUE)
     txt(tx, top - 0.865, 'Budget per run')
-    # budget strip: bold numbers with small unit words
+    # budget strip: the limits the language model is told (prompts.task); the fee limit is the session's (below)
     sx0, sx1, sy1 = LX0 + 0.05, LX1 - 0.05, top - 0.945
     sy0 = sy1 - 0.32
-    cells = [('40', 'fits'), ('80', 'responses'), ('6', 'h'), ('$25', '')]
+    cells = [(f'{BUDGET.max_fits}', 'fits'), (f'{BUDGET.max_turns}', 'responses'), (f'{BUDGET.max_hours:g}', 'h')]
     need = [max(measure(n, 10, 'bold'), measure(u, 8)) for n, u in cells]
     extra = (sx1 - sx0 - sum(need)) / len(cells)
     rbox(sx0, sy0, sx1 - sx0, sy1 - sy0, WHITE, BLUE, lw=LW_THIN, r=0.04, z=4)
@@ -377,10 +391,10 @@ def draw():
         if k:
             ln([x, x], [sy0 + 0.06, sy1 - 0.06], BLUE, LW_THIN, 5)
         if unit:
-            txt(x + cw / 2, sy0 + 0.218, num, 10, 'bold', ha='center')
-            txt(x + cw / 2, sy0 + 0.083, unit, 8, ha='center')
+            txt(x + cw / 2, sy0 + 0.218, num, 10, 'bold', ha='center', gid='strip')
+            txt(x + cw / 2, sy0 + 0.083, unit, 8, ha='center', gid='strip')
         else:
-            txt(x + cw / 2, (sy0 + sy1) / 2, num, 10, 'bold', ha='center')
+            txt(x + cw / 2, (sy0 + sy1) / 2, num, 10, 'bold', ha='center', gid='strip')
         x += cw
     link((LX1, LM_MID), (SX0, LM_MID), BLUE)
 
@@ -391,41 +405,44 @@ def draw():
     link((LX1, SE_MID), (SX0, SE_MID), BLUE)
 
     # ------------------------------------------------------------ language model layer
-    rbox(SX0, LM_Y0, OX1 - SX0, LM_Y1 - LM_Y0, ORANGE_T, ORANGE)
+    rbox(SX0, LM_Y0, OX1 - SX0, LM_Y1 - LM_Y0, TEAL_T, TEAL)
     txt(SX0 + PADX, LM_Y1 - HEAD, 'Language model', 10, 'bold')
     c_top, c_bot = LM_Y1 - 0.30, LM_Y0 + 0.06    # content band under the header
     cy = (c_top + c_bot) / 2
     d1, d2 = SX0 + 1.52, OX0                      # cell dividers, clear of the arrows below
-    vdivider(d1, c_bot + 0.08, c_top - 0.02, ORANGE)
-    vdivider(d2, c_bot + 0.08, c_top - 0.02, ORANGE)
+    vdivider(d1, c_bot + 0.08, c_top - 0.02, TEAL)
+    vdivider(d2, c_bot + 0.08, c_top - 0.02, TEAL)
     # models
-    icon_network(SX0 + PADX + 0.16, cy, 0.30, 0.34, ORANGE)
+    icon_network(SX0 + PADX + 0.16, cy, 0.30, 0.34, TEAL)
     txt(SX0 + PADX + 0.40, cy + 0.12, 'GPT-6.1 Sol', 9)
     txt(SX0 + PADX + 0.40, cy - 0.12, 'Claude Opus 5.5', 9)
     # system prompt with the decision criteria
     tw = 1.10                                     # width of the criteria table
     blk = 0.36 + tw
     bx = (d1 + d2) / 2 - blk / 2
-    icon_doc(bx + 0.12, cy + 0.13, 0.23, 0.30, ORANGE)
+    icon_doc(bx + 0.12, cy + 0.13, 0.23, 0.30, TEAL)
     px = bx + 0.36
     txt(px, cy + 0.32, 'System prompt', 9, 'bold')
     txt(px + tw, cy + 0.12, 'OFV decrease', ha='right')
-    ln([px, px + tw], [cy + 0.035, cy + 0.035], ORANGE, LW_THIN, 3)
+    ln([px, px + tw], [cy + 0.035, cy + 0.035], TEAL, LW_THIN, 3)
     txt(px, cy - 0.08, 'Add')
     txt(px + tw, cy - 0.08, '≥ 3.84', weight='bold', ha='right')
     txt(px, cy - 0.27, 'Keep')
     txt(px + tw, cy - 0.27, '≥ 6.63', weight='bold', ha='right')
     # never writes or runs code
     ncx = (OX0 + OX1) / 2
-    icon_nocode(ncx, cy + 0.10, 0.18, ORANGE, TEXT)
+    icon_nocode(ncx, cy + 0.10, 0.18, TEAL, TEXT)
     txt(ncx, cy - 0.25, 'No code', ha='center')
 
     # ------------------------------------------------------------ PKAgent session layer
     rbox(SX0, SE_Y0, SX1 - SX0, SE_Y1 - SE_Y0, GREEN_T, GREEN)
     txt(SX0 + PADX, SE_Y1 - HEAD, 'PKAgent session', 10, 'bold')
-    txt(SX1 - PADX, SE_Y1 - HEAD, '14 tools', 9, 'bold', ha='right')
-    groups = [('Data', 4, 'table'), ('Models', 4, 'comp'), ('Diagnostics', 3, 'gof'),
-              ('Covariates and\nuncertainty', 2, 'forest'), ('Report', 1, 'report')]
+    txt(SX1 - PADX, SE_Y1 - HEAD, f'{N_TOOLS} tools', 9, 'bold', ha='right')
+    icons = {'Data': 'table', 'Models': 'comp', 'Diagnostics': 'gof', 'Covariates and uncertainty': 'forest',
+             'Report': 'report'}
+    assert list(icons) == list(TOOL_GROUPS), 'a tool group of paper/tool_groups.py has no pictogram'
+    assert sum(len(v) for v in TOOL_GROUPS.values()) == N_TOOLS
+    groups = [(g.replace(' and ', ' and\n'), len(names), icons[g]) for g, names in TOOL_GROUPS.items()]
     t_y1 = SE_Y1 - 0.33
     t_y0 = t_y1 - 0.63
     pad, gap = 0.08, 0.06
@@ -450,13 +467,16 @@ def draw():
         badge(x + tw_ - 0.035, t_y1, n)
         x += tw_ + gap
     # what the session keeps
-    ln([SX0 + 0.08, SX1 - 0.08], [t_y0 - 0.085] * 2, GREEN, LW_THIN, 3, ls=(0, (2.5, 2)))
-    st_y = (t_y0 - 0.085 + SE_Y0) / 2
-    state = [('Versioned data', 'versions'), ('Model registry', 'registry'), ('Budgets', 'gauge'), ('Log', 'log')]
+    ln([SX0 + 0.08, SX1 - 0.08], [t_y0 - 0.075] * 2, GREEN, LW_THIN, 3, ls=(0, (2.5, 2)))
+    st_y = (t_y0 - 0.075 + SE_Y0) / 2
+    # the session counts every budget and stops a run at the fee limit, which the model is not told
+    fee = f'(${BUDGET.max_cost_usd:g} fee limit)'
+    state = [('Versioned data', 'versions'), ('Model registry', 'registry'), (f'Budgets\n{fee}', 'gauge'),
+             ('Log', 'log')]
     iw = 0.15
-    widths = [iw + 0.06 + measure(s) for s, _ in state]
-    sgap = (SX1 - SX0 - 0.24 - sum(widths)) / (len(state) - 1)
-    x = SX0 + 0.12
+    widths = [iw + 0.06 + max(measure(t) for t in s.split('\n')) for s, _ in state]
+    sgap = (SX1 - SX0 - 0.20 - sum(widths)) / (len(state) - 1)
+    x = SX0 + 0.10
     for (s, kind), wd in zip(state, widths):
         icx = x + iw / 2
         if kind == 'versions':
@@ -467,12 +487,12 @@ def draw():
             icon_gauge(icx, st_y - 0.035, 0.07, GREEN)
         else:
             icon_log(icx, st_y, iw, 0.13, GREEN)
-        txt(x + iw + 0.06, st_y, s)
+        txt(x + iw + 0.06, st_y, s, linespacing=1.0)
         x += wd + sgap
 
     # language model <-> session: two one-way arrows, each in the colour of its source block
     a_dn, a_up = SCX - 0.17, SCX + 0.17
-    link((a_dn, LM_Y0), (a_dn, SE_Y1), ORANGE)
+    link((a_dn, LM_Y0), (a_dn, SE_Y1), TEAL)
     link((a_up, SE_Y1), (a_up, LM_Y0), GREEN)
     mid = (LM_Y0 + SE_Y1) / 2
     txt(a_dn - 0.07, mid, 'tool calls', ha='right')
@@ -601,6 +621,14 @@ def audit():
     lws = [l.get_linewidth() for l in ax.lines] + [p.get_linewidth() for p in ax.patches
                                                    if p.get_edgecolor()[3] > 0 and p.get_linewidth() > 0]
     print(f'line widths {min(lws):.2f} to {max(lws):.2f} pt')
+    assert LW_RANGE[0] <= min(lws) and max(lws) <= LW_RANGE[1], f'stroke widths outside {LW_RANGE} pt'
+    assert min(sizes) >= 8, 'text below 8 pt'
+    strip = [t.get_text() for t in texts if t.get_gid() == 'strip']
+    assert strip == [f'{BUDGET.max_fits}', 'fits', f'{BUDGET.max_turns}', 'responses', f'{BUDGET.max_hours:g}',
+                     'h'], strip
+    assert any(t.get_text() == f'{N_TOOLS} tools' for t in texts)
+    assert sorted(t.get_text() for t in texts if t.get_gid() == 'badge') == sorted(
+        str(len(v)) for v in TOOL_GROUPS.values())
 
 
 def main():

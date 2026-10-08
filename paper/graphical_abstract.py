@@ -1,15 +1,25 @@
 """Graphical abstract for CPT (vector, matplotlib primitives only).
 
 Three columns joined by lanes: datasets and the three knowledge conditions (left) enter the PKAgent loop (middle);
-one arrow per result card leaves it (right), colored by the condition the result belongs to (neutral for the
-36/36 card). The take-home line sits in a banner along the bottom. Drawn at the exact CPT print size
-(7.0 x 4.375 in, width = 1.6 x height) and never rescaled; all coordinates are in inches.
+one arrow per result card leaves it (right), colored by the condition the result belongs to (neutral for the two
+cards on the 36 runs without or with the expert statement, which say so). The take-home line sits in a banner along
+the bottom. Drawn at the exact CPT print size (7.0 x 4.375 in, width = 1.6 x height) and never rescaled; all
+coordinates are in inches. Colors follow Figures 2 to 4: gray no knowledge, orange expert statement (and nothing
+else), red misleading statement; the language model is teal.
+
+Every number in the image and in the text comes from paper/build/numbers.json (written by
+paper/manuscript_numbers.py; run it first), the tool count from paper/tool_groups.py and the model names from
+benchmarks/figures.py; the text is assembled from the same values, and both are checked against each other and
+against the claims on the cards.
 
 Writes paper/figures/Graphical_abstract.pdf (vector), .png (600 dpi), .tiff (CMYK, via benchmarks/figures.py
 tiff_cmyk) and .txt (the graphical abstract text), copies the .pdf, .tiff and .txt to paper/submission_cpt/, and
 prints a text audit (every text artist with its size, the minimum size, word counts, stroke widths, overlaps).
 Usage: python paper/graphical_abstract.py
 """
+import json
+import math
+import re
 import shutil
 import sys
 from itertools import combinations
@@ -27,18 +37,17 @@ from matplotlib.text import Text  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / 'benchmarks'))
-from figures import tiff_cmyk  # noqa: E402  (importing it also sets its own rcParams; ours are set below)
+sys.path.insert(0, str(HERE))
+from figures import COLOR, LLM, tiff_cmyk  # noqa: E402  (importing it also sets its own rcParams; ours are set below)
+from tool_groups import N_TOOLS  # noqa: E402
 
 OUT, SUB = HERE / 'figures', HERE / 'submission_cpt'
+NUMBERS = HERE / 'build' / 'numbers.json'
 STEM = 'Graphical_abstract'
 W, H = 7.0, 4.375                       # print size in inches (CPT: width = 1.6 x height)
 DPI = 600
-
-TEXT = ('PKAgent lets a large language model develop population pharmacokinetic models only through the tools of an '
-        'open-source estimation engine, with every step logged. On three public datasets, two language models found '
-        'the reference structures in all 36 runs and kept strongly supported covariate effects in 11 of 12 runs '
-        'without expert knowledge. The knowledge an analyst states shapes weakly supported effects and should be '
-        'reported with the model.')
+MIN_PT = 10                             # smallest text in the image (pt)
+LW_RANGE = (0.5, 1.0)                   # CPT line widths (pt)
 
 TAKE_HOME = ('The knowledge an analyst gives the agent shapes weakly supported effects',
              'and should be reported with the model.')
@@ -46,20 +55,88 @@ TAKE_HOME = ('The knowledge an analyst gives the agent shapes weakly supported e
 # palette
 TXT = '#1F2933'
 BLUE, BLUE_T = '#4A7FB5', '#E8F1FB'
-ORANGE, ORANGE_T = '#C8801E', '#FDF1E3'
+ORANGE, ORANGE_T = '#C8801E', '#FDF1E3'     # expert statement only
+TEAL, TEAL_T = '#2B7A8C', '#E3F1F4'         # language model
 GREEN, GREEN_T = '#4C8C4A', '#EEF6EE'
 PURPLE, PURPLE_T = '#7A5BA6', '#F3EEF8'
 OUTG, OUTG_T = '#7B8794', '#F4F5F7'
-NOK, NOK_T = '#8A94A6', '#EEF0F4'
-RED, RED_T = '#B5473A', '#F9E9E6'
+NOK, NOK_T = '#8A94A6', '#EEF0F4'           # no knowledge
+RED, RED_T = '#B5473A', '#F9E9E6'           # misleading statement
 DARK = '#3E4C59'
 WHITE = '#FFFFFF'
+assert (NOK, ORANGE) == (COLOR['none'], COLOR['knowledge']), 'condition colors differ from Figures 2 to 4'
 
 LOOP = dict(gap=0.06, box_dx=0.18, pin=14, rad=0.36)    # call/return arcs: ends at the boxes and on the tool ring
 
 LW = 0.8                                # default outline width (pt)
 LW_THIN = 0.6
-LW_BOLD = 1.2
+LW_BOLD = 1.0                           # heaviest stroke (CPT: 0.5 to 1 pt)
+
+# ----------------------------------------------------------------------------------------------- numbers
+NUMBER_WORDS = {w: k for k, w in enumerate('zero one two three four five six seven eight nine ten eleven twelve'
+                                           .split())}
+
+
+def runs_of(phrase):
+    """(k, n) from a run count written by paper/manuscript_numbers.py ('36 of 36', '11 of 12 runs', 'all six runs',
+    'none of the four runs', 'five of six runs', 'both runs', 'neither run')."""
+    def num(w):
+        return int(w) if w.isdigit() else NUMBER_WORDS[w]
+    p = re.sub(r' runs?$', '', phrase.strip())
+    if p in ('both', 'neither'):
+        return (2 if p == 'both' else 0), 2
+    for pattern, kn in ((r'all (\w+)', lambda m: (num(m[1]), num(m[1]))),
+                        (r'none of the (\w+)', lambda m: (0, num(m[1]))),
+                        (r'(\w+) of (?:the )?(\w+)', lambda m: (num(m[1]), num(m[2])))):
+        m = re.fullmatch(pattern, p)
+        if m:
+            return kn(m)
+    raise ValueError(f'cannot read a run count from {phrase!r}')
+
+
+def word(k):
+    return next(w for w, v in NUMBER_WORDS.items() if v == k)
+
+
+def load_numbers():
+    """The values shown in the image and the text, read from paper/build/numbers.json, with checks that the
+    claims printed on the cards hold."""
+    if not NUMBERS.exists():
+        raise SystemExit(f'{NUMBERS} is missing: run python paper/manuscript_numbers.py first')
+    n = json.loads(NUMBERS.read_text(encoding='utf-8'))
+    datasets = [k[:-len('_hours_span')] for k in n if k.endswith('_hours_span')]
+    v = dict(n_runs=int(n['n_runs']), n_datasets=len(datasets), n_llm=len(LLM), hours=n['hours_median'],
+             cost=n['cost_median'], strong_phrase=n['strong_kept'])
+    # main grid: runs and reference structures per condition (no knowledge, expert statement)
+    v['cond_runs'] = {c: sum(int(n[f'{ds}_{c}_runs']) for ds in datasets) for c in ('none', 'knowledge')}
+    v['cond_struct'] = {c: sum(runs_of(n[f'{ds}_{c}_structure'])[0] for ds in datasets) for c in ('none', 'knowledge')}
+    v['struct_k'], v['struct_n'] = runs_of(n['structure_all'])
+    assert v['struct_n'] == v['n_runs'] == sum(v['cond_runs'].values()), 'main-grid run counts disagree'
+    assert v['struct_k'] == sum(v['cond_struct'].values()), 'reference-structure counts disagree'
+    # no knowledge: strongly supported covariate effects kept
+    v['strong_k'], v['strong_n'] = runs_of(n['strong_kept'])
+    # expert statement: 'every reference relationship implemented' must hold in every run of every dataset
+    for ds in datasets:
+        k, t = runs_of(n[f'{ds}_knowledge_all_ref'])
+        assert k == t, f'{ds}: not every expert-statement run implemented every reference relationship'
+    # misleading statement: 'data-contradicted claims rejected', 'unsupported second compartment adopted'
+    assert runs_of(n['pm_weight_kept'])[0] == runs_of(n['pm_weight_kept'])[1], 'a run dropped the weight effect'
+    assert runs_of(n['pm_apgar_cl_adopted'])[0] == 0, 'a run adopted the Apgar effect on CL'
+    assert runs_of(n['om_mm_kept'])[0] == runs_of(n['om_mm_kept'])[1], 'a run adopted linear elimination'
+    assert runs_of(n['om_2cmt_adopted'])[0] > 0, 'no run adopted the second compartment'
+    return v
+
+
+def ga_text(v):
+    """Graphical abstract text (method, main result, conclusion), assembled from the same values as the image."""
+    structure = (f"all {v['struct_n']} runs" if v['struct_k'] == v['struct_n']
+                 else f"{v['struct_k']} of {v['struct_n']} runs")
+    return ('PKAgent lets a large language model develop population pharmacokinetic models only through the tools '
+            'of an open-source estimation engine, with every step logged. '
+            f"On {word(v['n_datasets'])} public datasets, {word(v['n_llm'])} language models found the reference "
+            f"structures in {structure}; without knowledge they kept the strongly supported covariate effects in "
+            f"{v['strong_phrase']}, and with an expert statement they implemented every reference relationship. "
+            'The knowledge an analyst states shapes weakly supported effects and should be reported with the model.')
 
 plt.rcParams.update({
     'font.family': 'Arial',
@@ -180,7 +257,7 @@ def star(cx, cy, ro, ri=None, n=5):
 
 def icon_condition(ax, cx, cy, kind, s=1.0):
     """Condition pictogram: empty dashed bubble (no knowledge), bubble with a star (expert statement),
-    bubble with a cross (wrong statement)."""
+    bubble with a cross (misleading statement)."""
     w, h, tail = 0.26 * s, 0.17 * s, 0.06 * s
     path = bubble_path(cx, cy, w, h, r=0.045 * s, tail=tail)
     if kind == 'none':
@@ -331,69 +408,89 @@ def waffle(ax, x0, ytop, ncol, colors, filled, pitch=0.09, r=0.032, row_gap=None
 
 
 # ----------------------------------------------------------------------------------------------- figure
-def build():
+def build(v):
     fig = plt.figure(figsize=(W, H), dpi=100)
     ax = fig.add_axes([0, 0, 1, 1])
     ax.set_xlim(0, W)
     ax.set_ylim(0, H)
     ax.axis('off')
     fig.canvas.draw()
+    shown = {}                          # numbers drawn on the cards, checked against the text in main()
 
     m = 0.07
     yb0, yb1 = m, 0.56                  # take-home banner
-    y0, y1 = 0.68, H - m                # main zone
+    y0, y1 = 0.66, H - m                # main zone
     L0, L1 = m, 1.93                    # left: datasets and conditions
     M0, M1 = 2.23, 4.08                 # middle: PKAgent
     R0, R1 = 4.38, W - m                # right: results
     G = 0.035                           # gap between arrow ends and boxes
 
     # ---------------- right column first: its cards define the lanes
-    gap = 0.08
-    c36 = (y1 - 0.66, y1)
-    cmed = (c36[0] - gap - 0.49, c36[0] - gap)
-    cnok = (cmed[0] - gap - 0.74, cmed[0] - gap)
-    cexp = (cnok[0] - gap - 0.52, cnok[0] - gap)
-    cwrg = (y0, cexp[0] - gap)
-    mid = lambda c: (c[0] + c[1]) / 2          # noqa: E731
-
+    gap = 0.07
     bar = 0.04
     icol0 = R0 + bar + 0.08                    # leading icon column [icol0, icol1]
-    pitch, rdot = 0.09, 0.032
-    icol1 = icol0 + 5 * pitch + 2 * rdot
+    pitch, rdot, ncol = 0.09, 0.032, 6
+    icol1 = icol0 + (ncol - 1) * pitch + 2 * rdot
     icx = (icol0 + icol1) / 2
     tx = icol1 + 0.13                          # text column of every card
 
-    # 36/36: reference structure (18 runs without knowledge, 18 with the expert statement)
-    card(ax, R0, c36[0], R1, c36[1], WHITE, OUTG)
-    gh = 6 * pitch - (pitch - 2 * rdot) + 0.03
-    waffle(ax, icol0, mid(c36) + gh / 2, 6, [NOK] * 18 + [ORANGE] * 18, [True] * 36, pitch, rdot, row_gap=(3, 0.03))
-    cy = mid(c36)
-    text(ax, tx, cy + 0.03, '36/36', 20, 'bold', va='baseline')
-    text(ax, tx + text_width(fig, '36/36', 20, 'bold') + 0.05, cy + 0.03, 'runs', 10, va='baseline')
-    text(ax, tx, cy - 0.15, 'reference structure', 10)
+    # main-grid waffle: one marker per run, the no-knowledge rows (gray) above the expert-statement rows (orange)
+    nk, ex = v['cond_runs']['none'], v['cond_runs']['knowledge']
+    split = (nk // ncol, 0.03) if nk % ncol == 0 else None
+    rows36 = math.ceil((nk + ex) / ncol)
+    gh = (rows36 - 1) * pitch + 2 * rdot + (split[1] if split else 0.0)
+    scope_h = 0.245                            # scope line under the waffle (centre 0.115 below it)
+    c36 = (y1 - (0.06 + gh + scope_h), y1)
+    cmed = (c36[0] - gap - 0.47, c36[0] - gap)
+    cnok = (cmed[0] - gap - 0.70, cmed[0] - gap)
+    cexp = (cnok[0] - gap - 0.50, cnok[0] - gap)
+    cmis = (y0, cexp[0] - gap)
+    mid = lambda c: (c[0] + c[1]) / 2          # noqa: E731
 
-    # median per run
+    # reference structure in the runs without or with the expert statement
+    card(ax, R0, c36[0], R1, c36[1], WHITE, OUTG)
+    wtop = c36[1] - 0.06
+    colors = [NOK] * nk + [ORANGE] * ex
+    filled = ([True] * v['cond_struct']['none'] + [False] * (nk - v['cond_struct']['none'])
+              + [True] * v['cond_struct']['knowledge'] + [False] * (ex - v['cond_struct']['knowledge']))
+    waffle(ax, icol0, wtop, ncol, colors, filled, pitch, rdot, row_gap=split)
+    cy = wtop - gh / 2
+    big = f"{v['struct_k']}/{v['struct_n']}"
+    shown['structure'] = big
+    text(ax, tx, cy + 0.03, big, 20, 'bold', va='baseline')
+    text(ax, tx + text_width(fig, big, 20, 'bold') + 0.05, cy + 0.03, 'runs', 10, va='baseline')
+    text(ax, tx, cy - 0.15, 'reference structure', 10)
+    text(ax, icol0, wtop - gh - 0.115, 'without or with the expert statement', 10)
+
+    # median per run over the same runs
     card(ax, R0, cmed[0], R1, cmed[1], OUTG_T, OUTG)
-    text(ax, icol0, cmed[1] - 0.12, 'median per run', 10)
-    base = cmed[0] + 0.085
+    text(ax, icol0, cmed[1] - 0.12, f"median per run ({v['n_runs']} runs)", 10)
+    base = cmed[0] + 0.075
     ny = base + 0.08                           # middle of the 16-pt digits
     x = icol0 + 0.085
     icon_clock(ax, x, ny, DARK)
     x += 0.135
-    text(ax, x, base, '1.2 h', 16, 'bold', va='baseline')
-    x += text_width(fig, '1.2 h', 16, 'bold') + 0.26
+    hours, cost = f"{v['hours']} h", f"${v['cost']}"
+    shown['hours'], shown['cost'] = hours, cost
+    text(ax, x, base, hours, 16, 'bold', va='baseline')
+    x += text_width(fig, hours, 16, 'bold') + 0.26
     icon_banknote(ax, x, ny, DARK)
     x += 0.135
-    text(ax, x, base, '$0.28', 16, 'bold', va='baseline')
-    x += text_width(fig, '$0.28', 16, 'bold') + 0.06
+    text(ax, x, base, cost, 16, 'bold', va='baseline')
+    x += text_width(fig, cost, 16, 'bold') + 0.06
     text(ax, x, base, 'LLM fees', 10, va='baseline')
 
-    # no knowledge: strongly supported covariate effects kept in 11 of 12 runs
+    # no knowledge: strongly supported covariate effects kept
     card(ax, R0, cnok[0], R1, cnok[1], NOK_T, NOK, accent=NOK, bar=bar)
     cy = mid(cnok)
-    waffle(ax, icol0, cy + pitch / 2 + rdot, 6, [NOK] * 12, [True] * 11 + [False], pitch, rdot)
-    text(ax, tx, cy + 0.1, '11/12', 20, 'bold', va='baseline')
-    text(ax, tx + text_width(fig, '11/12', 20, 'bold') + 0.05, cy + 0.1, 'runs', 10, va='baseline')
+    k, t = v['strong_k'], v['strong_n']
+    rows = math.ceil(t / ncol)
+    waffle(ax, icol0, cy + ((rows - 1) * pitch + 2 * rdot) / 2, ncol, [NOK] * t, [True] * k + [False] * (t - k),
+           pitch, rdot)
+    big = f'{k}/{t}'
+    shown['strong'] = big
+    text(ax, tx, cy + 0.1, big, 20, 'bold', va='baseline')
+    text(ax, tx + text_width(fig, big, 20, 'bold') + 0.05, cy + 0.1, 'runs', 10, va='baseline')
     text(ax, tx, cy - 0.06, 'strongly supported', 10)
     text(ax, tx, cy - 0.225, 'covariate effects kept', 10)
 
@@ -404,10 +501,10 @@ def build():
     text(ax, tx, cy + 0.085, 'every reference', 10)
     text(ax, tx, cy - 0.085, 'relationship implemented', 10)
 
-    # wrong statement: data-contradicted claims rejected; unsupported second compartment adopted
-    card(ax, R0, cwrg[0], R1, cwrg[1], RED_T, RED, accent=RED, bar=bar)
-    cy = mid(cwrg)
-    ra, rb = cy + 0.215, cy - 0.215
+    # misleading statement: data-contradicted claims rejected; unsupported second compartment adopted
+    card(ax, R0, cmis[0], R1, cmis[1], RED_T, RED, accent=RED, bar=bar)
+    cy = mid(cmis) + 0.008                    # pictogram below the last line: balance the margins
+    ra, rb = cy + 0.21, cy - 0.21
     icon_blocked(ax, icx, ra, DARK, r=0.085)
     text(ax, tx, ra + 0.085, 'data-contradicted claims', 10)
     text(ax, tx, ra - 0.085, 'rejected', 10, 'bold')
@@ -439,9 +536,9 @@ def build():
 
     # ---------------- left: condition chips, one per lane
     chip_h = 0.46
-    lanes = [('none', 'no knowledge', NOK, NOK_T, mid(cnok)), ('expert', 'expert statement', ORANGE, ORANGE_T,
-                                                              mid(cexp)),
-             ('wrong', 'wrong statement', RED, RED_T, mid(cwrg))]
+    lanes = [('none', 'no knowledge', NOK, NOK_T, mid(cnok)),
+             ('expert', 'expert statement', ORANGE, ORANGE_T, mid(cexp)),
+             ('misleading', 'misleading statement', RED, RED_T, mid(cmis))]
     for kind, lab, col, tint, cy in lanes:
         rbox(ax, L0, cy - chip_h / 2, L1 - L0, chip_h, tint, col, lw=LW, r=0.07)
         icon_condition(ax, ix, cy - 0.012, kind)
@@ -455,22 +552,24 @@ def build():
     bx0, bx1 = M0 + 0.08, M1 - 0.08
     bicx, btx = bx0 + 0.2, bx0 + 0.4
     llm = (3.29, 3.98)
-    rbox(ax, bx0, llm[0], bx1 - bx0, llm[1] - llm[0], ORANGE_T, ORANGE, lw=LW)
+    rbox(ax, bx0, llm[0], bx1 - bx0, llm[1] - llm[0], TEAL_T, TEAL, lw=LW)
     lcy = mid(llm)
-    icon_network(ax, bicx, lcy, ORANGE, s=1.1)
+    icon_network(ax, bicx, lcy, TEAL, s=1.1)
     text(ax, btx, lcy + 0.165, 'Language model', 10, 'bold')
-    text(ax, btx, lcy - 0.005, 'GPT-6.1 Sol', 10)
-    text(ax, btx, lcy - 0.17, 'Claude Opus 5.5', 10)
+    gpt, claude = LLM['gpt'], LLM['claude']
+    text(ax, btx, lcy - 0.005, gpt, 10)
+    text(ax, btx, lcy - 0.17, claude, 10)
 
     eng = (1.36, 1.96)
     tcy = (llm[0] + eng[1]) / 2                # tools hub halfway between language model and engine
     ring, disc_r = 0.3, 0.255
     ax.add_patch(Circle((mc, tcy), disc_r, fc=PURPLE_T, ec=PURPLE, lw=LW, zorder=3))
-    for k in range(14):
-        a = np.pi / 2 + k * 2 * np.pi / 14
+    for k in range(N_TOOLS):                    # one dot per tool (paper/tool_groups.py)
+        a = np.pi / 2 + k * 2 * np.pi / N_TOOLS
         ax.add_patch(Circle((mc + ring * np.cos(a), tcy + ring * np.sin(a)), 0.021, fc=PURPLE, ec='none',
                             zorder=4))
-    text(ax, mc, tcy + 0.06, '14', 16, 'bold', ha='center', va='center')
+    shown['tools'] = str(N_TOOLS)
+    text(ax, mc, tcy + 0.06, str(N_TOOLS), 16, 'bold', ha='center', va='center')
     text(ax, mc, tcy - 0.115, 'tools', 10, ha='center', va='center')
 
     rbox(ax, bx0, eng[0], bx1 - bx0, eng[1] - eng[0], PURPLE_T, PURPLE, lw=LW)
@@ -506,12 +605,12 @@ def build():
     # ---------------- banner: take-home line, centered in the space right of the bulb
     rbox(ax, m, yb0, W - 2 * m, yb1 - yb0, OUTG_T, OUTG, lw=LW, r=0.08)
     bulb_x = m + 0.3
-    icon_bulb(ax, bulb_x, (yb0 + yb1) / 2 + 0.005, ORANGE, s=1.1)
+    icon_bulb(ax, bulb_x, (yb0 + yb1) / 2 + 0.005, DARK, s=1.1)      # neutral: orange is the expert statement
     free0 = bulb_x + 0.155 * 1.1 + 0.05
     text(ax, (free0 + W - m) / 2, (yb0 + yb1) / 2, '\n'.join(TAKE_HOME), 11, 'bold', ha='center', va='center',
          linespacing=1.3)
 
-    return fig, ax
+    return fig, ax, shown
 
 
 # ----------------------------------------------------------------------------------------------- audit
@@ -555,24 +654,41 @@ def audit(fig):
                 and art.get_linewidth() > 0:
             lws.append(art.get_linewidth())
     print(f'stroke widths (pt): min {min(lws):.2f}, max {max(lws):.2f} over {len(lws)} stroked artists')
+    assert not out and not hits, 'text outside the page or overlapping'
+    assert LW_RANGE[0] <= min(lws) and max(lws) <= LW_RANGE[1], f'stroke widths outside {LW_RANGE} pt'
+    assert min(q['size'] for q in rows) >= MIN_PT, f'text below {MIN_PT} pt'
     return words, min(q['size'] for q in rows)
 
 
 def main():
-    fig, _ = build()
+    v = load_numbers()
+    text_ = ga_text(v)
+    fig, _, shown = build(v)
     audit(fig)
+    # the image and the text show the same values
+    assert shown['structure'] == f"{v['struct_k']}/{v['struct_n']}" and (
+        f"all {v['struct_n']} runs" if v['struct_k'] == v['struct_n'] else f"{v['struct_k']} of {v['struct_n']} runs"
+    ) in text_
+    assert shown['strong'] == f"{v['strong_k']}/{v['strong_n']}" and v['strong_phrase'] in text_
+    assert runs_of(v['strong_phrase']) == (v['strong_k'], v['strong_n'])
+    assert shown['tools'] == str(N_TOOLS)
+    assert shown['hours'] == f"{v['hours']} h" and shown['cost'] == f"${v['cost']}"
+    assert 50 <= len(text_.split()) <= 80, 'graphical abstract text outside 50 to 80 words'
+    assert '\u2014' not in text_
+    print('values:', {k: shown[k] for k in sorted(shown)}, '| runs per condition', v['cond_runs'])
+    print('text:', text_)
     assert tuple(fig.get_size_inches()) == (W, H)
     OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT / f'{STEM}.pdf')
     fig.savefig(OUT / f'{STEM}.png', dpi=DPI)
     plt.close(fig)
     tiff_cmyk(OUT / f'{STEM}.png', OUT / f'{STEM}.tiff')
-    (OUT / f'{STEM}.txt').write_text(TEXT + '\n', encoding='utf-8')
+    (OUT / f'{STEM}.txt').write_text(text_ + '\n', encoding='utf-8')
     SUB.mkdir(exist_ok=True)
     for ext in ('pdf', 'tiff', 'txt'):
         shutil.copy(OUT / f'{STEM}.{ext}', SUB / f'{STEM}.{ext}')
     print(f'Graphical abstract: {W} x {H} in (ratio {W / H:.3f}), PNG and TIFF at {DPI} dpi; '
-          f'text {len(TEXT.split())} words')
+          f'text {len(text_.split())} words')
 
 
 if __name__ == '__main__':

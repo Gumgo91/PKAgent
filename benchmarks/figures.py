@@ -21,6 +21,9 @@ LLM = dict(gpt='GPT-6.1 Sol', claude='Claude Opus 5.5')
 COND = dict(none='No knowledge', knowledge='Expert statement')
 COLOR = dict(none='#8A94A6', knowledge='#C8801E')
 MARK = dict(gpt='o', claude='s')
+HATCH = '//////'                  # Figure 3: present with another form (dense diagonal hatch in the cell edge color)
+AGREE = (.8, 1.25)                # Figure 2: shaded band, the range in which typical values agree (evaluate.py)
+RATIO_TICKS = [.125, .25, .5, 1, 2]   # Figure 2: ticks of the ratio axis
 
 
 plt.rcParams.update({'font.size': 8, 'axes.titlesize': 9, 'axes.labelsize': 8, 'xtick.labelsize': 8,
@@ -94,9 +97,9 @@ def figure_recovery(runs):
                                edgecolor='white', linewidth=.4, zorder=3)
                     k += 1
         ax.axvline(1, color='#7B8794', lw=.6, linestyle=':', zorder=1)
-        ax.axvspan(.8, 1.25, color='#DCE8F6', lw=0, zorder=0)
+        ax.axvspan(*AGREE, color='#DCE8F6', lw=0, zorder=0)
         ax.set_xscale('log')
-        ticks = [.125, .25, .5, 1, 2]
+        ticks = RATIO_TICKS
         ax.xaxis.set_major_locator(FixedLocator(ticks))
         ax.xaxis.set_minor_locator(NullLocator())
         ax.set_xticklabels([f'{t:g}' for t in ticks])
@@ -126,8 +129,9 @@ REF_FORMS = {
 
 def figure_covariates(runs):
     """Covariate recovery: reference relationships (rows, with the OFV increase on removing each one from the
-    reference fit) against runs (columns); dark = present with the reference form, light = present with another
-    form, white = absent; the last row counts relationships that are not in the reference model."""
+    reference fit) against runs (columns); dark = present with the reference form, hatched = present with another
+    form, white = absent; the last row counts relationships that are not in the reference model. Gray is kept for
+    the no-knowledge condition of the other figures, so 'another form' is a hatch, not a fill."""
     from matplotlib.patches import Rectangle
     ev = HERE / 'evaluation' / 'evaluation.json'
     details = json.loads(ev.read_text(encoding='utf-8'))['details'] if ev.exists() else {}
@@ -148,8 +152,13 @@ def figure_covariates(runs):
             found = {(p, c): set(f) for p, c, f in (details.get(key) or {}).get('relationships', [])}
             for i, rel in enumerate(rels):
                 forms = found.get(rel)
-                color = 'white' if not forms else ('#1F2933' if REF_FORMS[ds][rel] in forms else '#9AA5B1')
-                ax.add_patch(Rectangle((j, i), .9, .9, facecolor=color, edgecolor='#52606D', lw=.6))
+                other = bool(forms) and REF_FORMS[ds][rel] not in forms     # present with another form: hatched
+                color = '#1F2933' if forms and not other else 'white'
+                cell = Rectangle((j, i), .9, .9, facecolor=color, edgecolor='#52606D', lw=.6,
+                                 hatch=HATCH if other else None)
+                if other:
+                    cell.set_hatch_linewidth(.6)
+                ax.add_patch(cell)
             extra = len([k for k in found if k not in REF_FORMS[ds]])
             ax.text(j + .45, len(rels) + .45, str(extra), ha='center', va='center', fontsize=8)
         labels = []
@@ -162,9 +171,9 @@ def figure_covariates(runs):
         ax.set_xticklabels([f"{'G' if m == 'gpt' else 'C'}{rep[-1]}" for m, rep in zip(sub['llm'], sub['rep'])],
                            fontsize=8)
         ncond = (sub['condition'] == 'none').sum()
-        ax.axvline(ncond - .05, color='#C8801E', lw=1.0)
-        ax.text(ncond / 2, -.45, 'No knowledge', ha='center')
-        ax.text(ncond + (len(sub) - ncond) / 2, -.45, 'Expert statement', ha='center', color='#C8801E')
+        ax.axvline(ncond - .05, color=COLOR['knowledge'], lw=1.0)
+        ax.text(ncond / 2, -.45, COND['none'], ha='center', color=COLOR['none'])
+        ax.text(ncond + (len(sub) - ncond) / 2, -.45, COND['knowledge'], ha='center', color=COLOR['knowledge'])
         ax.set_xlim(-.2, len(sub) + .1)
         ax.set_ylim(len(rels) + 1, -1)
         ax.set_title(LABEL.get(ds, ds), loc='left', pad=12)

@@ -19,9 +19,11 @@ BENCH = HERE.parent / 'benchmarks'
 EVAL = BENCH / 'evaluation'
 BUILD = HERE / 'build'
 sys.path.insert(0, str(BENCH))
+sys.path.insert(0, str(HERE))
 from recall import recalled                                         # noqa: E402
 from evaluate import reference_typical, typical_values, _match     # noqa: E402
 from agent_tests import rest as _rest                                # noqa: E402
+from tool_groups import N_TOOLS                                      # noqa: E402
 
 
 def same_rest(a, b):
@@ -129,6 +131,7 @@ def subgroup_ratio(r, param, mask_fn):
 
 
 def main():
+    sys.stdout.reconfigure(encoding='utf-8')     # the printout has − and other non-ASCII characters (cp949 consoles)
     BUILD.mkdir(exist_ok=True)
     ev = json.loads((EVAL / 'evaluation.json').read_text(encoding='utf-8'))
     runs = pd.DataFrame(ev['runs'])
@@ -182,6 +185,18 @@ def main():
     lo, hi = (int(cells.min()), int(cells.max())) if len(cells) else (0, 0)
     n['n_runs'] = len(main_grid)
     n['n_runs_all'] = len(runs)
+    # runs on the datasets whose reference model has covariates (Figure 3)
+    n['n_runs_covariates'] = int(main_grid['dataset'].isin([d for d in REFERENCE if REFERENCE[d]]).sum())
+    n['n_tools'] = N_TOOLS                                          # paper/tool_groups.py (Methods, Figure 1)
+    # per-run limits from the run records (Methods, Figure 1): the task message stated the fits, responses and hours;
+    # the fee limit was enforced by the session, and the model saw only the fees spent
+    limits = {json.dumps(json.loads((run_dir(r) / 'run.json').read_text(encoding='utf-8'))['budget'], sort_keys=True)
+              for _, r in runs.iterrows()}
+    if len(limits) != 1:
+        raise SystemExit(f'the runs differ in their limits: {sorted(limits)}')
+    limits = json.loads(limits.pop())
+    n['budget_fits'], n['budget_responses'] = limits['max_fits'], limits['max_turns']
+    n['budget_hours'], n['budget_fee_usd'] = f"{limits['max_hours']:g}", f"{limits['max_cost_usd']:g}"
     n['reps_times'] = TIMES.get(lo, f'{lo} times') if lo == hi else f'{word(lo)} to {word(hi)} times' if hi - lo > 1 \
         else f'{TIMES.get(lo)} or {TIMES.get(hi)}'
     n['reps_phrase'] = (f'{word(lo)} replicate{"s" if lo > 1 else ""} per combination' if lo == hi else
@@ -654,6 +669,7 @@ def main():
         if not missed:
             n['all_strong_kept'] = 'yes'
         else:
+            n['strong_missed_word'] = word(len(missed))           # 'in all but one run' (checked in check_claims.py)
             n['strong_missed_desc'] = '; '.join(
                 f"{word(1)} {LLM[m['llm']]} {LABEL[m['dataset']].lower()} run omitted "
                 f"{', '.join(effect_words(e) for e in m['missing'])} after {word(m['fits'])} fits"

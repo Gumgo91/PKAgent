@@ -93,6 +93,26 @@ def checks():
             if r['dataset'] == 'remifentanil' and r['llm'] == 'claude' and int(r['fits']) <= 8:
                 ok &= bool(re.search(r'time (budget|limit)', report_text(r), re.I))
         check('the run that omitted a strong effect cited the time budget', ok)
+    # 'the strongly supported covariate effects in all but {{strong_missed_word}} run' (Highlights, Discussion,
+    # Conclusion): count, over all runs without and with the statement, the final models that lack a reference
+    # relationship whose removal from the reference fit raised the OFV by 6.63 or more; the count must equal the word
+    # filled into the text (no word when the clause is dropped), and 'run' must agree with it in number
+    evidence = json.loads((EVAL / 'effect_evidence.json').read_text(encoding='utf-8'))
+    details = json.loads((EVAL / 'evaluation.json').read_text(encoding='utf-8'))['details']
+    strong = {(ds, tuple(x['effect'].split('_')[0].split('~'))) for ds, d in evidence.items()
+              for x in d.get('removals', []) if x.get('delta_ofv') is not None and x['delta_ofv'] >= 6.63}
+    n_missed = 0
+    for _, r in runs.iterrows():
+        key = next((k for k in details if k.replace('\\', '/') == f"{r['dataset']}/{r['condition']}/{r['llm']}/{r['rep']}"),
+                   None)
+        found = {(p, c) for p, c, _f in (details.get(key) or {}).get('relationships', [])}
+        n_missed += any(rel not in found for ds, rel in strong if ds == r['dataset'])
+    words = {0: None, 1: 'one', 2: 'two', 3: 'three'}
+    plural = re.findall(r'\{\{strong_missed_word\}\} run(s?)\b', (HERE / 'manuscript_cpt.md').read_text(encoding='utf-8'))
+    check('strongly supported effects missed in exactly {{strong_missed_word}} of all runs (none with the statement)',
+          numbers.get('strong_missed_word') == words.get(n_missed, str(n_missed))
+          and (n_missed == 0) == (numbers.get('all_strong_kept') == 'yes')
+          and all((s == 's') == (n_missed > 1) for s in plural), (n_missed, numbers.get('strong_missed_word'), plural))
     pairs = []
     for key, t in tests.items():
         if key[0] != 'remifentanil':
@@ -250,6 +270,134 @@ def checks():
         if fitted_without and summ.get('uncertainty_status') == 'computed':
             fin.append('/'.join((r['dataset'], r['condition'], r['llm'], r['rep'])))
     check('standard errors were added after finalization in exactly one run', len(fin) == 1, fin)
+    out += alt_text_checks(numbers, runs)
+    return out
+
+
+ALT_TEXT = HERE / 'figures' / 'alt_text.txt'
+ALT_IMAGES = ['Figure 1', 'Figure 2', 'Figure 3', 'Figure 4', 'Graphical abstract']
+
+
+def alt_text_checks(numbers, runs):
+    """Checks of paper/figures/alt_text.txt, the alternative text of the figures and the graphical abstract (written by
+    hand; build_cpt.py copies it to paper/submission_cpt/), against the values the images show: numbers.json, the
+    per-run limits (pkagent.config.Budget), the system prompt, paper/tool_groups.py, the constants of
+    benchmarks/figures.py and paper/graphical_abstract.py, runs.csv and evaluation.json. One check per image, and one
+    for the wording of all paragraphs."""
+    import ast
+    import matplotlib
+    matplotlib.use('Agg')                                # benchmarks/figures.py imports pyplot; nothing is drawn
+    sys.path.insert(0, str(HERE.parent / 'src'))
+    sys.path.insert(0, str(HERE))
+    from figures import AGREE, RATIO_TICKS, REF_FORMS, _range   # noqa: E402
+    from pkagent.config import Budget                           # noqa: E402
+    from pkagent.prompts import SYSTEM                          # noqa: E402
+    from tool_groups import N_TOOLS, TOOL_GROUPS                # noqa: E402
+    out = []
+
+    def check(name, ok, detail=''):
+        out.append((f'alt text, {name}', bool(ok), detail))
+
+    if not ALT_TEXT.exists():
+        check('file exists', False, str(ALT_TEXT))
+        return out
+    blocks = ALT_TEXT.read_text(encoding='utf-8').strip().split('\n\n')[1:]
+    paras = {b.split('\n', 1)[0].split(' (')[0]: b.split('\n', 1)[1] for b in blocks}
+    files = {b.split('\n', 1)[0].split(' (')[0]: re.findall(r'[\w.]+\.(?:pdf|tiff)', b.split('\n', 1)[0])
+             for b in blocks}
+    if sorted(paras) != sorted(ALT_IMAGES):
+        check('one paragraph per image', False, sorted(paras))
+        return out
+    f1, f2, f3, f4, ga = (paras[k] for k in ALT_IMAGES)
+    word = {k: w for k, w in enumerate('zero one two three four five six seven eight nine ten'.split())}
+    b = Budget()
+
+    # Figure 1: limits given to the model, the session's fee limit, decision thresholds, tool groups
+    groups = ', '.join(f'{g.lower()} {len(v)}' for g, v in TOOL_GROUPS.items())
+    fig1_src = (HERE / 'figure1_architecture.py').read_text(encoding='utf-8')
+    detail = [f'{b.max_fits} model fits, {b.max_turns} responses and {b.max_hours:g} hours',
+              f'${b.max_cost_usd:g} fee limit', f'{N_TOOLS} tools in {word[len(TOOL_GROUPS)]} groups ({groups})']
+    check('Figure 1: limits, fee limit, thresholds, and tool groups',
+          all(s in f1 for s in detail)
+          and all(f'at least {x}' in f1 and f'at least {x}' in SYSTEM and f'≥ {x}' in fig1_src
+                  for x in ('3.84', '6.63')), detail)
+
+    # Figure 2: band and axis; only the remifentanil V3 medians fall outside the band (most of them), with the
+    # widest subject ranges
+    params = dict(pheno=['CL', 'V'], remifentanil=['CL', 'V1', 'Q2', 'V2', 'Q3', 'V3'],
+                  oral_mm=['Ka', 'V', 'VMAX', 'KM'])
+    inside, width = {}, {}
+    for ds, ps in params.items():
+        sub = runs[runs['dataset'] == ds]
+        for p in ps:
+            med = sub[f'ratio_{p}_median'].dropna()
+            inside[(ds, p)] = (int(((med >= AGREE[0]) & (med <= AGREE[1])).sum()), len(med))
+            width[(ds, p)] = max(hi / lo for lo, hi in map(_range, sub[f'ratio_{p}_range'].dropna()))
+    outside = {k: v for k, v in inside.items() if v[0] < v[1]}
+    v3 = ('remifentanil', 'V3')
+    check('Figure 2: band, axis, and the remifentanil V3 medians outside the band',
+          f'{AGREE[0]:.2f} to {AGREE[1]:.2f}' in f2 and f'from {RATIO_TICKS[0]:g} to {RATIO_TICKS[-1]:g}' in f2
+          and list(outside) == [v3] and outside[v3][0] < outside[v3][1] / 2
+          and max(width, key=width.get) == v3, (outside, max(width, key=width.get)))
+
+    # Figure 3: run counts and the cells as benchmarks/figures.py draws them
+    det = json.loads((EVAL / 'evaluation.json').read_text(encoding='utf-8'))['details']
+    det = {k.replace('\\', '/'): v for k, v in det.items()}
+    cells, extra, per_cond = {}, [], {}
+    for ds, ref in REF_FORMS.items():
+        for cond in ('none', 'knowledge'):
+            sub = runs[(runs['dataset'] == ds) & (runs['condition'] == cond)]
+            per_cond[(ds, cond)] = len(sub)
+            for _, r in sub.iterrows():
+                found = {(p, c): set(f) for p, c, f in
+                         det[f"{ds}/{cond}/{r['llm']}/{r['rep']}"].get('relationships', [])}
+                for rel, form in ref.items():
+                    f = found.get(rel)
+                    cells.setdefault((ds, cond, rel), []).append('white' if not f else 'dark' if form in f
+                                                                 else 'hatched')
+                extra.append(len([k for k in found if k not in ref]))
+
+    def share(ds, cond, rels, state):
+        c = [s for rel in rels for s in cells[(ds, cond, rel)]]
+        return sum(s == state for s in c) / len(c)
+    remi_other = [rel for rel in REF_FORMS['remifentanil'] if rel != ('V1', 'AGE')]
+    n_cond = set(per_cond.values())
+    check('Figure 3: runs, other relationships, and cells',
+          f"the {numbers['n_runs_covariates']} runs" in f3 and sum(per_cond.values()) == numbers['n_runs_covariates']
+          and len(n_cond) == 1 and f'six runs without knowledge and six with the expert statement' in f3
+          and word[n_cond.pop()] == 'six' and f'({min(extra)} to {max(extra)} per run)' in f3
+          and all(share(ds, 'knowledge', REF_FORMS[ds], 'dark') == 1 for ds in REF_FORMS)
+          and share('pheno', 'none', [('CL', 'WT'), ('V', 'WT')], 'white') == 0
+          and share('pheno', 'none', [('V', 'APGR')], 'white') == 1
+          and share('remifentanil', 'none', [('V1', 'AGE')], 'white') == 1
+          and share('remifentanil', 'none', remi_other, 'dark') == 0
+          and share('remifentanil', 'none', remi_other, 'hatched') >= .9,
+          (per_cond, min(extra), max(extra), share('remifentanil', 'none', remi_other, 'hatched')))
+
+    # Figure 4: run count; the highest fits, hours, and fees belong to remifentanil runs
+    check('Figure 4: runs and the highest resources',
+          f"the {numbers['n_runs']} runs" in f4 and len(runs) == numbers['n_runs']
+          and all(runs.loc[runs[c].idxmax(), 'dataset'] == 'remifentanil' for c in ('fits', 'hours', 'cost_usd')))
+
+    # graphical abstract: the card values (paper/build/numbers.json, as in paper/graphical_abstract.py) and the banner
+    src = (HERE / 'graphical_abstract.py').read_text(encoding='utf-8')
+    take_home = next(ast.literal_eval(a.value) for a in ast.parse(src).body if isinstance(a, ast.Assign)
+                     and any(getattr(t, 'id', None) == 'TAKE_HOME' for t in a.targets))
+    detail = [f"{numbers['structure_all']} runs without or with the expert statement",
+              f"median of {numbers['hours_median']} hours and ${numbers['cost_median']}",
+              f"kept in {numbers['strong_kept']}", f'{N_TOOLS} tools', 'reads: ' + ' '.join(take_home)]
+    check('graphical abstract: card values, tool count, and banner', all(s in ga for s in detail),
+          [s for s in detail if s not in ga])
+
+    # wording: condition names as in the manuscript, no dashes, one to three sentences, the submitted files
+    text = '\n'.join(paras.values())
+    sentences = {k: len(re.split(r'(?<=[.])\s+(?=[A-Z])', p.strip())) for k, p in paras.items()}
+    missing = [f for fs in files.values() for f in fs if not (HERE / 'figures' / f).exists()]
+    check('condition names, dashes, sentences, and files',
+          all(w in text for w in ('no knowledge', 'expert statement', 'misleading statement'))
+          and not re.search(r'wrong statement|expert-knowledge|—|–', text)
+          and all(1 <= s <= 3 for s in sentences.values()) and not missing
+          and all(len(fs) == 2 for fs in files.values()), (sentences, missing))
     return out
 
 

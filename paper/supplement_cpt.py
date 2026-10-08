@@ -28,6 +28,7 @@ from pkagent.config import Budget, Settings                           # noqa: E4
 from pkagent.prompts import SYSTEM, task                              # noqa: E402
 from pkagent.spec import SPEC_SCHEMA                                  # noqa: E402
 from pkagent.tools import TOOLS                                       # noqa: E402
+from tool_groups import N_TOOLS, TOOL_GROUPS                          # noqa: E402   (the groups of Figure 1)
 
 OUT = HERE / 'submission_cpt'
 BENCH = ROOT / 'benchmarks'
@@ -186,22 +187,33 @@ def s1():
     text(d, 'Given verbatim to the language model at the start of every run.')
     code(d, SYSTEM)
     heading(d, 'S1.2 Task message', 3)
-    text(d, 'The first user message of a run. The expert-knowledge section appears only in the expert-knowledge and '
-            'misleading conditions; the budget lines show the settings of the benchmark.')
-    code(d, task('<dataset description>', '<expert statement>', None, Budget()))
+    b = Budget()
+    text(d, 'The first user message of a run. The section "Expert knowledge from the analyst" appears only in the '
+            'expert-statement and misleading-statement conditions; the Budget section gives the limits of the benchmark '
+            f'on fits, responses, and hours, and the session also stops a run at ${b.max_cost_usd:g} of language model '
+            'fees, which the message does not state (S2.1).')
+    code(d, task('<dataset description>', '<expert statement>', None, b))
     heading(d, 'S1.3 Tools', 3)
-    rows = []
-    for t in TOOLS:
-        f = t['function']
-        params = ', '.join(f['parameters'].get('properties', {}))
-        rows.append([f['name'], f['description'], params or '–'])
-    title = (f'**Table S1.** The {len(TOOLS)} tools available to the language model (function-calling definitions '
-             'sent with every request; descriptions verbatim)')
-    header = ['Tool', 'Description', 'Parameters']
-    note = 'The model specification accepted by fit_models is given in S1.4.'
-    add_table(d, title, header, rows,
-              f'{note} {abbreviations([title, *header, *(c for r in rows for c in r)], WT="weight")}',
-              [1.3, 4.0, 1.2], size=8, literal=True)
+    definitions = {t['function']['name']: t['function'] for t in TOOLS}
+    assert N_TOOLS == len(TOOLS) == len(definitions), 'paper/tool_groups.py does not cover the tools of src/pkagent'
+    rows, spans = [], []                 # spans: first and last body row of each group (row 0 is the header)
+    for group, names in TOOL_GROUPS.items():
+        spans.append((len(rows) + 1, len(rows) + len(names)))
+        for i, name in enumerate(names):
+            f = definitions[name]
+            params = ', '.join(f['parameters'].get('properties', {}))
+            rows.append([group if i == 0 else '', name, f['description'], params or '–'])
+    title = (f'**Table S1.** The {N_TOOLS} tools available to the language model, by functional group '
+             '(function-calling definitions sent with every request; descriptions verbatim)')
+    header = ['Group', 'Tool', 'Description', 'Parameters']
+    note = ('Group, the functional group of the tool in Figure 1 (paper/tool_groups.py); the grouping is descriptive '
+            'and is not sent to the model. The model specification accepted by fit_models is given in S1.4.')
+    table = add_table(d, title, header, rows,
+                      f'{note} {abbreviations([title, *header, *(c for r in rows for c in r)], WT="weight")}',
+                      [0.9, 1.2, 3.35, 1.05], size=8, literal=True)
+    for first, last in spans:            # one group label per group: merge its cells of the Group column
+        if last > first:
+            table.cell(first, 0).merge(table.cell(last, 0))
     heading(d, 'S1.4 Model specification schema', 3)
     text(d, 'JSON schema of one model specification (an item of fit_models.models). Specifications are validated '
             'against this schema and additional semantic checks before fitting.')
@@ -212,9 +224,9 @@ def s1():
         v = DATASETS[name]
         text(d, f'**{LABEL[name]}**')
         labeled(d, 'Description given to the agent: ', v['description'])
-        labeled(d, 'Expert statement (expert-knowledge condition): ', v['knowledge'])
+        labeled(d, 'Expert statement (expert-statement condition): ', v['knowledge'])
         if v.get('misleading_knowledge'):
-            labeled(d, 'Misleading statement (misleading condition): ', v['misleading_knowledge'])
+            labeled(d, 'Misleading statement (misleading-statement condition): ', v['misleading_knowledge'])
         d.add_paragraph()
     save(d, 'S1')
 
@@ -368,7 +380,7 @@ def s2():
                         'versions were discarded; the system prompt was not changed after the first pilot; the code '
                         'was frozen at PKAgent commit f5a4263 and PKPy2 0.2.1 (commit 41301f1 of '
                         'https://github.com/Gumgo91/PKPy2) before the benchmark; covariate recall, precision and form '
-                        'agreement and the misleading condition were added to the evaluation after the first '
+                        'agreement and the misleading-statement condition were added to the evaluation after the first '
                         'replicate, and the oral MM reference residual model was changed from proportional to '
                         'log-normal after all runs (see Oral MM residual model)'),
         robustness(),

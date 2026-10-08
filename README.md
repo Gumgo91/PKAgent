@@ -68,6 +68,10 @@ run('data.csv', 'results/run1', description='...', knowledge='...', settings=Set
 `benchmarks/run_benchmark.py` runs public datasets with published reference models, without and with a one-sentence
 expert statement, for each LLM. See `benchmarks/README.md`.
 
+## Paper
+
+How each table, figure and supplementary file of the CPT paper is built from the benchmark results: `paper/README.md`.
+
 ## License
 
 MIT. See `LICENSE`.

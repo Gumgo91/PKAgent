@@ -1,15 +1,16 @@
 """Build the Clinical Pharmacology & Therapeutics submission of the PKAgent manuscript.
 
 Input: paper/manuscript_cpt.md (body), paper/build/numbers.json and table2.json (python paper/manuscript_numbers.py),
-paper/misleading_text.json (prose about the misleading-sentence runs, once they exist), benchmarks/datasets.json
-(expert statements of Table 1), paper/figures/Figure_<n>.pdf.
+paper/misleading_text.json (prose about the misleading-sentence runs, once they exist), paper/figures/Figure_<n>.pdf and
+.tiff, paper/figures/alt_text.txt.
 Output: paper/submission_cpt/ with the manuscript (DOCX: title page, abstract, text, study highlights, statements,
-references, tables, figure legends), the figures as separate files, and the cover letter.
+references, tables, figure legends), the figures and their alternative text as separate files, and the cover letter.
 
 CPT conventions applied: 12-point Times New Roman, double spacing, 1-inch margins, US Letter, page and line numbers;
 citations as superscript numbers after punctuation, numbered in order of first citation; tables after the references,
-one per page; figure legends after the tables. Headings use the Word styles Heading 1 (main headings, capitals) and
-Heading 2 (subheadings, sentence case), restyled to the body font, so that the navigation pane and PDF bookmarks work.
+one per page, with at most 130 characters per row (the final build is refused otherwise); figure legends after the
+tables. Headings use the Word styles Heading 1 (main headings, capitals) and Heading 2 (subheadings, sentence case),
+restyled to the body font, so that the navigation pane and PDF bookmarks work.
 """
 import json
 import re
@@ -30,7 +31,7 @@ from references_cpt import REFERENCES                      # noqa: E402
 
 BUILD = HERE / 'build'
 OUT = HERE / 'submission_cpt'
-DATASETS = json.loads((HERE.parent / 'benchmarks' / 'datasets.json').read_text(encoding='utf-8'))
+MAX_TABLE_ROW = 130                              # CPT: 'restrict the number of characters per row to 130'
 
 TITLE = 'PKAgent: Expert Knowledge Versus Data in Population Pharmacokinetic Modeling by a Large Language Model Agent'
 AUTHORS = [('Hyunseung Kong', 1)]
@@ -249,26 +250,23 @@ def heading(d, text, level, new_page=False):
 
 # ------------------------------------------------------------------ tables
 def table1_rows(cites):
-    """Key facts only (details in Methods and Table S2); the expert statements are verbatim. Called after the body has
-    been numbered, so the cited sources keep the numbers of their first citation in the text."""
+    """Key facts only, so that a row stays within the CPT limit of 130 characters; the details are in Methods and
+    Table S2, and the expert statements, verbatim, in Supplementary Material S1.5. Called after the body has been
+    numbered, so the cited sources keep the numbers of their first citation in the text."""
     def cite(*keys):
         return '^{' + cites.numbers(list(keys)) + '}'
     design = {
-        'pheno': f'59 preterm neonates{cite("Grasela1985")}; IV loading and maintenance doses; 155 concentrations',
-        'remifentanil': '65 adults aged 20–85 years; 4- to 20-minute IV infusion; 1,992 concentrations',
-        'oral_mm': f'Simulated subset of Oral_1CPTMM{cite("nlmixr2data", "Schoemaker2019")}: 40 subjects; 10–80'
-                   + NBSP + 'mg orally',
+        'pheno': f'59 preterm neonates{cite("Grasela1985")}; IV doses; 155 concentrations',
+        'remifentanil': '65 adults aged 20–85; IV infusion; 1,992 concentrations',
+        'oral_mm': f'Oral_1CPTMM{cite("nlmixr2data", "Schoemaker2019")} subset: 40 subjects; 10–80' + NBSP + 'mg orally',
     }
     reference = {
-        'pheno': f'NONMEM example model{cite("Boeckmann1994")}: one compartment; CL and V proportional to birth weight; '
-                 'V 15.9% larger if Apgar score below 5',
-        'remifentanil': f'Minto et al.{cite("Minto1997")}: three compartments; V1, V2, and CL linear in age and LBM; Q2 '
-                        'and Q3 linear in age',
-        'oral_mm': 'Simulation model: one compartment; first-order absorption; MM elimination; 30% IIV; 20% '
-                   'exponential residual error',
+        'pheno': f'One compartment; birth weight on CL and V; Apgar score on V{cite("Boeckmann1994")}',
+        'remifentanil': f'Three compartments; age and LBM on V1, V2, CL; age on Q2, Q3{cite("Minto1997")}',
+        'oral_mm': 'One compartment; first-order absorption; MM elimination',
     }
     label = dict(pheno='Phenobarbital', remifentanil='Remifentanil', oral_mm='Oral MM (simulated)')
-    return [[label[k], design[k], reference[k], f'"{DATASETS[k]["knowledge"]}"'] for k in label]
+    return [[label[k], design[k], reference[k]] for k in label]
 
 
 def add_table(d, title, header, rows, footnote, widths, size=9, literal=False, note_size=10,
@@ -471,13 +469,16 @@ def main():
 
     # tables (landscape, one per page); the sources cited in Table 1 keep their numbers from the text
     landscape_section(d)
-    t1 = add_table(d, '**Table 1.** Benchmark datasets, reference models, and the expert statement of the '
-                      'expert-knowledge condition',
-                   ['Dataset', 'Design', 'Reference model', 'Expert statement'], table1_rows(cites),
-                   'CL, clearance; IIV, interindividual variability; IV, intravenous; LBM, lean body mass; MM, '
-                   'Michaelis–Menten; Q2 and Q3, intercompartmental clearances; V, V1, V2, volumes of distribution. '
+    statements = json.loads((HERE.parent / 'benchmarks' / 'datasets.json').read_text(encoding='utf-8'))
+    statement_note = '; '.join(f'{name}, "{statements[k]["knowledge"]}"' for k, name in
+                               (('pheno', 'phenobarbital'), ('remifentanil', 'remifentanil'), ('oral_mm', 'oral MM')))
+    t1 = add_table(d, '**Table 1.** Benchmark datasets, reference models, and expert statements',
+                   ['Dataset', 'Design', 'Reference model'], table1_rows(cites),
+                   f'Expert statements given in the expert-statement condition (verbatim): {statement_note} '
+                   'CL, clearance; IV, intravenous; LBM, lean body mass; MM, Michaelis–Menten; Q2 and Q3, '
+                   'intercompartmental clearances; V, V1, V2, volumes of distribution. '
                    'Details of the designs and reference models are given in Methods and Table S2.',
-                   [1.15, 2.1, 2.45, 3.3], size=12, note_size=12, note_spacing=WD_LINE_SPACING.DOUBLE, fixed=True)
+                   [1.65, 3.6, 3.75], size=12, note_size=12, note_spacing=WD_LINE_SPACING.DOUBLE, fixed=True)
     if len(cites.order) != n_refs:
         raise SystemExit(f'Table 1 cites a reference not cited in the text: {cites.order[n_refs:]}')
     header = ['Dataset, condition', 'Runs', 'Reference structure', 'Reference relationships (form)',
@@ -508,6 +509,13 @@ def main():
                    [1.5, .6, .84, 1.0, 1.0, .75, .95, 1.18, 1.18], size=10, note_size=12, fixed=True, new_page=True)
     print('characters per row: Table 1 ' + ', '.join(map(str, chars_per_row(t1))) + '; Table 2 '
           + ', '.join(map(str, chars_per_row(t2))))
+    long_rows = [f'Table {k} row {i} ({c} characters)' for k, t in ((1, t1), (2, t2))
+                 for i, c in enumerate(chars_per_row(t)) if c > MAX_TABLE_ROW]
+    for r in long_rows:
+        print(f'WARNING: {r} > {MAX_TABLE_ROW} characters per row')
+    if long_rows and '--draft' not in sys.argv:
+        raise SystemExit(f'final build refused (use --draft to build anyway): table rows over {MAX_TABLE_ROW} '
+                         'characters: ' + '; '.join(long_rows))
 
     # figure legends and supplementary material
     portrait_section(d)
@@ -526,6 +534,7 @@ def main():
             src = HERE / 'figures' / f'Figure_{n}.{ext}'
             if src.exists():
                 shutil.copy(src, OUT / src.name)
+    shutil.copy(HERE / 'figures' / 'alt_text.txt', OUT / 'alt_text.txt')     # checked by check_claims.alt_text_checks
     (BUILD / 'manuscript_cpt_filled.md').write_text(text, encoding='utf-8')
     (BUILD / 'reference_order.json').write_text(json.dumps(cites.order, indent=1), encoding='utf-8')
     unused = sorted(set(REFERENCES) - set(cites.order))
@@ -546,10 +555,11 @@ def cover_letter():
     each paragraph, page numbers in the footer, signature block on separate lines."""
     import datetime as dt
     today = dt.date.today()
-    values = dict(date=f'{today:%B} {today.day}, {today.year}', title=TITLE, ai_disclosure=f'⟦HL⟧{AI_DISCLOSURE}⟦/HL⟧',
-                  corresponding='\n'.join(signature_lines()))
+    numbers = json.loads((BUILD / 'numbers.json').read_text(encoding='utf-8'))     # run counts as in the manuscript
+    values = dict(numbers, date=f'{today:%B} {today.day}, {today.year}', title=TITLE,
+                  ai_disclosure=f'⟦HL⟧{AI_DISCLOSURE}⟦/HL⟧', corresponding='\n'.join(signature_lines()))
     text = (HERE / 'cover_letter_cpt.md').read_text(encoding='utf-8')
-    text = re.sub(r'\{\{(\w+)\}\}', lambda m: values[m.group(1)], text)
+    text = re.sub(r'\{\{(\w+)\}\}', lambda m: str(values[m.group(1)]), text)
     d = docx.Document()
     st = d.styles['Normal']
     st.font.name, st.font.size = 'Times New Roman', Pt(12)
