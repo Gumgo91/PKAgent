@@ -12,11 +12,15 @@ The file is written only when all three sections are built; otherwise the previo
 Format: that of the author's earlier supplementary file, from paper/templates/supplement_template.docx (python
 paper/templates/make_templates.py): US Letter portrait, margins 1.25 in left and right and 1.0 in top and bottom, no
 header, footer or page numbers; Times New Roman 11 pt, line spacing 1.15, 10 pt after each paragraph; every paragraph in
-the Normal style with direct formatting. No title page: the file starts with the heading of S1. Section headings 12 pt
-bold (S2 and S3 start on a new page), subsection headings bold at body size, table captions bold, tables in the
-template's grid table style with a Normal note below them: at body size where they fit the 6.0 in text width, the wide
-ones at a smaller font with fixed column widths. Verbatim code (system prompt, task message, schema) is set in Consolas,
-the recall excerpts and final reports at 9 pt.
+the Normal style with direct formatting, all running text (the recall excerpts and final reports included) at that
+size and spacing. No title page: the file starts with the heading of S1. Section headings 12 pt bold (S2 starts on a new
+page after a paragraph holding a manual page break, as in the template, and S3 on a new page because S2 fills its last
+page; see BREAK_BEFORE), subsection headings and run-in labels bold, table captions bold, tables in the template's grid
+table style and cell margins with a Normal note below them: at body size where they fit the 6.0 in text width (Tables
+S1 to S3), the wide ones at a smaller font with fixed column widths (Table S5 8.5 pt, Table S4 6 pt). As in the
+template, no paragraph has keep with next or page break before and no table row is kept from splitting; the header row
+of each table is repeated on every page. Verbatim code (system prompt, task message, schema) is set in Consolas 10 pt,
+single spaced.
 Run benchmarks/reference_fits.py, benchmarks/evaluate.py, benchmarks/agent_tests.py, benchmarks/reference_table.py and
 paper/manuscript_numbers.py first.
 """
@@ -27,16 +31,14 @@ from pathlib import Path
 
 import pandas as pd
 from docx.enum.text import WD_LINE_SPACING
-from docx.oxml import OxmlElement
 from docx.shared import Pt
-from docx.text.paragraph import Paragraph
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT / 'src'))
 sys.path.insert(0, str(HERE))
-from build_cpt import (TITLE, add_inline, add_table, base_document, heading, paragraph, save_docx,  # noqa: E402
-                       set_properties)
+from build_cpt import (TITLE, add_inline, add_table, base_document, heading, page_break, paragraph,  # noqa: E402
+                       save_docx, set_properties)
 from pkagent.config import Budget, Settings                           # noqa: E402
 from pkagent.prompts import SYSTEM, task                              # noqa: E402
 from pkagent.spec import SPEC_SCHEMA                                  # noqa: E402
@@ -46,7 +48,14 @@ from tool_groups import N_TOOLS, TOOL_GROUPS                          # noqa: E4
 OUT = HERE / 'submission_cpt'
 FILE = 'Supplementary_Material.docx'
 OLD_FILES = [f'Supplementary_Material_S{i}.docx' for i in (1, 2, 3)]   # the earlier layout: one file per section
-SMALL = 9                                   # points: recall excerpts and final reports (verbatim)
+CODE_SIZE = 10                              # points: Consolas of the verbatim code, close to Times New Roman 11 pt
+# Sections and group labels ('<subsection>: <label>') that start a new page (page_break). As in the template, no
+# paragraph is kept with the next one; S2 starts on a new page, and the other break points were chosen from Word's
+# layout of the present content (Letter, the template's margins and fonts) so that no label sits alone at the foot of a
+# page. S3 has no page break because S2 ends at the foot of its last page (a page break there would leave a blank
+# page). Check them again in Word whenever the content changes.
+BREAK_BEFORE = {'S2', 'S3.2: Remifentanil, no knowledge, Claude Opus 5.5, replicate 3',
+                'S3.3: Phenobarbital, misleading statement, Claude Opus 5.5, replicate 2'}
 BENCH = ROOT / 'benchmarks'
 DATASETS = json.loads((BENCH / 'datasets.json').read_text(encoding='utf-8'))
 LABEL = dict(pheno='Phenobarbital', remifentanil='Remifentanil', oral_mm='Oral MM (simulated)')
@@ -146,48 +155,42 @@ def tool_log(path):
             if line.strip()]
 
 
-def text(d, t, small=False):
-    """A Normal paragraph with the markup of add_inline: the template's 11 pt, line spacing 1.15 and 10 pt after, or
-    9 pt with 4 pt after (small)."""
-    return add_inline(paragraph(d, after=4 if small else None), t, size=SMALL if small else None)
+def text(d, t):
+    """A Normal paragraph with the markup of add_inline: the template's 11 pt, line spacing 1.15 and 10 pt after."""
+    return add_inline(paragraph(d), t)
 
 
 def verbatim(d, t):
-    """Verbatim text (no markup) at 9 pt with 4 pt after."""
-    return add_inline(paragraph(d, after=4), t, size=SMALL, literal=True)
+    """Verbatim text (no markup) in a Normal paragraph, as text."""
+    return add_inline(paragraph(d), t, literal=True)
 
 
-def labeled(d, label, body, small=False, bold=False):
-    """A paragraph of an italic (or bold) label followed by verbatim text (no markup: '*' and '**' are kept), at body
-    size or, small, at 9 pt with 4 pt after."""
-    size = SMALL if small else None
-    p = paragraph(d, after=4 if small else None)
-    run = p.add_run(label)
-    if bold:
-        run.bold = True
-    else:
-        run.italic = True
-    if size:
-        run.font.size = Pt(size)
-    add_inline(p, body, size=size, literal=True)
+def labeled(d, label, body):
+    """A Normal paragraph of a bold run-in label, as the run-in labels of the template, followed by verbatim text (no
+    markup: '*' and '**' are kept)."""
+    p = paragraph(d)
+    p.add_run(label).bold = True
+    add_inline(p, body, literal=True)
     return p
 
 
-def group_label(d, t):
-    """Bold label of a group of paragraphs (a dataset, a run): body size, 8 pt before and 2 pt after, kept with the
-    paragraph that follows."""
-    return paragraph(d, t, bold=True, before=8, after=2, keep_next=True)
+def group_label(d, t, part=''):
+    """Bold label of a group of paragraphs (a dataset, a run): body size, 8 pt before and 2 pt after; on a new page
+    when f'{part}: {t}' is in BREAK_BEFORE."""
+    if f'{part}: {t}' in BREAK_BEFORE:
+        page_break(d)
+    return paragraph(d, t, bold=True, before=8, after=2)
 
 
-def code(d, t, size=8):
-    """Verbatim code: one single-spaced Consolas paragraph per line, without space between the lines and with the
-    template's 10 pt after the block."""
+def code(d, t):
+    """Verbatim code: one single-spaced Consolas paragraph (CODE_SIZE) per line, without space between the lines and
+    with the template's 10 pt after the block."""
     p = None
     for line in t.rstrip().splitlines():
         p = d.add_paragraph()
         run = p.add_run(line if line else ' ')
         run.font.name = 'Consolas'
-        run.font.size = Pt(size)
+        run.font.size = Pt(CODE_SIZE)
         p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
         p.paragraph_format.space_after = Pt(0)
     if p is not None:
@@ -195,19 +198,18 @@ def code(d, t, size=8):
 
 
 def section(d, key):
-    """Heading of a section, 12 pt bold as the headings of the template; S2 and S3 start on a new page."""
-    heading(d, f'Supplementary Material {key}. {TITLES[key]}', 2, new_page=key != 'S1')
+    """Heading of a section, 12 pt bold as the headings of the template, after a page break (page_break of build_cpt:
+    the paragraph with a manual page break that precedes the last section of the supplement template) when key is in
+    BREAK_BEFORE."""
+    if key in BREAK_BEFORE:
+        page_break(d)
+    heading(d, f'Supplementary Material {key}. {TITLES[key]}', 2)
 
 
 def table(d, title, header, rows, footnote, widths, **kw):
     """Caption, table and note by add_table of build_cpt (the template's grid table style, header row repeated on each
-    page), with fixed column widths, which must fit the 6.0 in text width; the caption is kept on the page of the
-    table, and a row is not split across pages."""
-    t = add_table(d, title, header, rows, footnote, widths, fixed=True, **kw)
-    Paragraph(t._tbl.getprevious(), d._body).paragraph_format.keep_with_next = True
-    for row in t.rows:
-        row._tr.get_or_add_trPr().insert(0, OxmlElement('w:cantSplit'))
-    return t
+    page), with fixed column widths, which must fit the 6.0 in text width."""
+    return add_table(d, title, header, rows, footnote, widths, fixed=True, **kw)
 
 
 def s1(d):
@@ -239,19 +241,20 @@ def s1(d):
             'and is not sent to the model. The model specification accepted by fit_models is given in S1.4.')
     tbl = table(d, title, header, rows,
                 f'{note} {abbreviations([title, *header, *(c for r in rows for c in r)], WT="weight")}',
-                [0.78, 1.27, 2.68, 1.27], size=9, literal=True)
+                # 11 pt: no column narrower than its widest word, and no range ('1-30') split at a line end
+                [0.88, 1.47, 2.15, 1.50], literal=True)
     for first, last in spans:            # one group label per group: merge its cells of the Group column
         if last > first:
             tbl.cell(first, 0).merge(tbl.cell(last, 0))
     heading(d, 'S1.4 Model specification schema', 3)
     text(d, 'JSON schema of one model specification (an item of fit_models.models). Specifications are validated '
             'against this schema and additional semantic checks before fitting.')
-    code(d, json.dumps(SPEC_SCHEMA, indent=1), size=7)
+    code(d, json.dumps(SPEC_SCHEMA, indent=1))
     heading(d, 'S1.5 Benchmark datasets: descriptions, expert statements, and misleading statements given to the '
                'agent', 3)
     for name in LABEL:
         v = DATASETS[name]
-        group_label(d, LABEL[name])
+        group_label(d, LABEL[name], 'S1.5')
         labeled(d, 'Description given to the agent: ', v['description'])
         labeled(d, 'Expert statement (expert-statement condition): ', v['knowledge'])
         if v.get('misleading_knowledge'):
@@ -414,7 +417,7 @@ def s2(d):
         clinical(),
     ]
     for k, v in items:
-        labeled(d, f'{k}: ', f'{v}.', bold=True)
+        labeled(d, f'{k}: ', f'{v}.')
     heading(d, 'S2.2 PKPy2 fits of the reference models', 3)
     ref = pd.read_csv(BENCH / 'evaluation' / 'reference_table.csv')
     for name in LABEL:                          # the table must come from the current reference fits
@@ -653,9 +656,12 @@ def s3(d):
             'relationship), extracted from the model registry; relationships are written parameter~covariate, form in '
             'parentheses; APGR<5, indicator for Apgar score below 5; for oral MM, CL~DOSE was tested in models with '
             'linear elimination, the other DOSE relationships in Michaelis–Menten models.')
+    # 8.5 pt with the template's cell margins: the largest half-point size at which every column is at least as wide as
+    # its widest word or value (Times New Roman metrics; 9 pt would need 6.07 in) within the 6.0 in; the rest of the
+    # width goes where it saves the most lines (mostly to the covariate tests)
     table(d, title, header, rows,
           note + ' ' + abbreviations([title, *header, *(c for r in rows for c in r)], skip=('APGR<5',)),
-          [.8, .67, .57, .37, .52, .42, .66, .55, 1.44], size=8, literal=True)
+          [.81, .67, .58, .36, .52, .41, .67, .54, 1.44], size=8.5, literal=True)
 
     scm_path = BENCH / 'evaluation' / 'scm_baseline.json'
     bb_path = BENCH / 'evaluation' / 'backward_baseline.json'
@@ -669,14 +675,14 @@ def s3(d):
             labeled(d, f'{LABEL[ds]} (stepwise covariate modeling). ',
                     (f"Base OFV {v['base_ofv']:.2f}; final OFV {v['final_ofv']:.2f}; retained: "
                      f"{', '.join(v['included']) or 'none'}; {v['fits']} fits. Steps: {desc}.")
-                    .replace('APGR_LT5=1(categorical)', 'APGR<5'), bold=True)
+                    .replace('APGR_LT5=1(categorical)', 'APGR<5'))
     if bb_path.exists():
         for ds, v in json.loads(bb_path.read_text(encoding='utf-8')).items():
             steps = '; '.join(f"step {h['step']}: " + ', '.join(f"{k} {x:.1f}" for k, x in h['tests'].items() if x is not None)
                               for h in v['history'])
             labeled(d, f'{LABEL[ds]} (backward elimination from the reference model). ',
                     f"Removed: {', '.join(v.get('removed', [])) or 'none'}; retained: "
-                    f"{', '.join(v.get('retained', []))}. OFV increase on removal at each step: {steps}.", bold=True)
+                    f"{', '.join(v.get('retained', []))}. OFV increase on removal at each step: {steps}.")
 
     heading(d, 'S3.2 Statements referring to prior knowledge of the data or their analysis', 3)
     recall = json.loads((HERE / 'build' / 'recall.json').read_text(encoding='utf-8'))
@@ -705,7 +711,7 @@ def s3(d):
         if not hits:
             continue
         ds, cond, llm, rep = key.split('/')
-        group_label(d, f'{LABEL[ds]}, {COND[cond]}, {LLM[llm]}, replicate {rep[3:]}')
+        group_label(d, f'{LABEL[ds]}, {COND[cond]}, {LLM[llm]}, replicate {rep[3:]}', 'S3.2')
         for h in hits:
             verbatim(d, f"Turn {h['turn']} ({h['term']}): …{clean_context(h['context'], h['term'])}…")
 
@@ -714,10 +720,10 @@ def s3(d):
     for key in keys:
         res = json.loads((run_dir(*key) / 'results.json').read_text(encoding='utf-8'))
         rep = (res.get('final_model') or {}).get('report') or {}
-        group_label(d, f"{LABEL[key[0]]}, {COND[key[1]]}, {LLM[key[2]]}, replicate {key[3][3:]}")
+        group_label(d, f"{LABEL[key[0]]}, {COND[key[1]]}, {LLM[key[2]]}, replicate {key[3][3:]}", 'S3.3')
         for k in REPORT_FIELDS:
             if rep.get(k):
-                labeled(d, f"{k.replace('_', ' ').capitalize()}. ", rep[k], small=True)
+                labeled(d, f"{k.replace('_', ' ').capitalize()}. ", rep[k])
 
 
 def main():

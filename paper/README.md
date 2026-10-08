@@ -23,7 +23,14 @@ adds words that must not occur).
 `build_cpt.py` (manuscript and cover letter) and `supplement_cpt.py` start every file from these templates: US Letter
 portrait, margins 1.25 in left and right and 1.0 in top and bottom, no header, footer, page or line numbers, Times New
 Roman 11 pt with line spacing 1.15 and 10 pt after each paragraph, every paragraph in the Normal style with direct
-formatting (headings 12 pt bold, subsection headings bold), and the template's grid table style.
+formatting (headings 12 pt bold, subsection headings and run-in labels bold), and the template's grid table style and
+cell margins. As in the templates, no paragraph has an outline level, keep with next or page break before, and no
+table row is kept from splitting (the header row of each table is repeated on every page). A new page starts after a
+paragraph holding a manual page break, built as in the template (`page_break` in `build_cpt.py`): before the
+manuscript tables and Supplementary Material S2, and before the headings and labels listed in `BREAK_BEFORE` of
+`build_cpt.py` and `supplement_cpt.py`. Without keep with next, Word does not stop a heading from falling alone at the
+foot of a page; those break points were chosen from Word's layout of the present text so that none does, and must be
+checked in Word again when the text changes.
 
 ## Paper items
 
@@ -114,8 +121,11 @@ record, and `paper/figures/archive/` keeps an earlier vector Figure 1.
 - Word locks an open document: `build_cpt.py` and `supplement_cpt.py` stop with a message when an output file is open
   in Word; close it and run the script again.
 - `supplement_cpt.py` writes `Supplementary_Material.docx` only when all three sections are built (otherwise the
-  previous file is unchanged and every problem is printed). Its tables fit the 6.0 in text width of the portrait page:
-  Tables S2 and S3 at the body size, Tables S1, S5 and S4 at 9, 8 and 6 pt with fixed column widths. It warns when
+  previous file is unchanged and every problem is printed). Its tables fit the 6.0 in text width of the portrait page
+  with fixed column widths: Tables S1 to S3 at the body size, Tables S5 and S4 at 8.5 and 6 pt (manuscript Table 2 at
+  8.5 pt); 8.5 pt is the largest half-point size at which every column of the nine-column tables is at least as wide
+  as its widest word or value with the template's cell margins. All running text of the supplement, the final reports
+  included, is at the body size; the verbatim code is in Consolas 10 pt. It warns when
   `Supplementary_Material_S1.docx` to `_S3.docx` of the earlier layout (one file per section) are still in
   `paper/submission_cpt/`.
 - `paper/build.py`, `paper/manuscript.md`, `paper/supplement.py` and `paper/supplement.md` are an earlier draft for
