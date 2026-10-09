@@ -144,7 +144,7 @@ def ga_text(v):
             f"structures in {structure}. Without knowledge, they followed the data, keeping the strongly supported "
             f"covariate effects in {v['strong_phrase']} and leaving out the two weakly supported ones; with an expert "
             'statement, they included both. '
-            'The knowledge an analyst states shapes weakly supported effects and should be reported with the model.')
+            'Where data are weak, the model follows what the analyst states.')
 
 plt.rcParams.update({
     'font.family': 'Arial',

@@ -11,7 +11,8 @@ Steps:
 1. Copies the raw export without the editor's scene metadata (which holds signed links to the source raster) to
    paper/figures/Graphical_abstract_source.svg, the input of the next steps (used as is when the raw export is absent).
 2. Sets the size, weight, color (#1F2933) and alignment of each of the 44 text lines (the export dropped bold and gave
-   lines of one block different sizes; the strings are not changed), recolors the condition and language-model colors
+   lines of one block different sizes; the strings are not changed, except the two banner lines, which are set to
+   the last sentence of the abstract), recolors the condition and language-model colors
    to the exact palette of Figures 2 to 4, and crops the page to the CPT print size, 7.0 x 4.375 in (width = 1.6 x
    height), with even margins: paper/figures/Graphical_abstract.svg.
 3. Checks that the text lines are exactly the expected ones, that the claims on the cards hold in
@@ -49,9 +50,19 @@ PAGE = (-18.9, 58.9, 1301.8, 813.6)      # page in canvas units (x, y, width, he
 PT = W_IN * 72 / PAGE[2]                 # pt per canvas unit at the print size
 MIN_PT = 7.0                             # smallest text at the print size (pt)
 
-# the take-home banner: the last sentence of the abstract, in two lines
-BANNER = ('Where data are strong, PKAgent recovers the model; where they are weak, the knowledge',
-          'an analyst states shapes the model and should be reported with it.')
+# the take-home banner: the last sentence of the abstract, in two lines; they replace the two banner lines of the
+# FigureLabs export (EXPORT_BANNER, an earlier wording of that sentence), at the same place
+BANNER = ('Where data are strong, PKAgent recovers the model and rejects statements the data contradict;',
+          'where they are weak, the model follows what the analyst states, including unsupported claims.')
+EXPORT_BANNER = ('Where data are strong, PKAgent recovers the model; where they are weak, the knowledge',
+                 'an analyst states shapes the model and should be reported with it.')
+REWRITE = dict(zip(EXPORT_BANNER, BANNER))
+
+
+def shown(text):
+    """The string on the image for a text line of the export."""
+    return REWRITE.get(text, text)
+
 
 # exact paper palette (FigureLabs' colors were close but not identical): Figures 2 to 4 and the earlier vector GA
 PALETTE = {'rgb(168,107,13)': 'rgb(200,128,30)',    # orange #C8801E, expert statement
@@ -106,8 +117,8 @@ SPEC = [
     ('rejected', 643, 19, R, 'L', 950),
     ('unsupported second', 672, 19, R, 'L', 950),
     ('compartment: adopted', 694, 19, R, 'L', 950),
-    (BANNER[0], 776, 24, B, 'L', 125),
-    (BANNER[1], 808, 24, B, 'L', 125),
+    (EXPORT_BANNER[0], 776, 23, B, 'L', 125),
+    (EXPORT_BANNER[1], 808, 23, B, 'L', 125),
 ]
 
 TEXT_RE = re.compile(
@@ -144,7 +155,7 @@ def normalize(svg):
         post = post.replace('fill: rgb(0,0,0)', 'fill: rgb(31,41,51)')
         anchor = ' text-anchor="middle"' if align == 'C' else ''
         return (f'{head}<text{pre}font-size="{fs}"{mid}font-weight="{wt}"{anchor}{post}>'
-                f'<tspan x="{ax - cx:.3f}" y="{y:.3f}" >{text}</tspan></text>')
+                f'<tspan x="{ax - cx:.3f}" y="{y:.3f}" >{html.escape(shown(html.unescape(text)), quote=False)}</tspan></text>')
 
     svg, n = TEXT_RE.subn(repl, svg)
     assert n == len(SPEC) == len(used), f'{n} text lines in the export, {len(SPEC)} specified, {len(used)} matched'
@@ -230,7 +241,7 @@ def check_pdf_and_render_png(pdf, png):
         assert fonts and all(f[1] != 'n/a' for f in fonts), f'a font is not embedded: {fonts}'
         assert all('Arial' in f[3] for f in fonts), [f[3] for f in fonts]
         words = Counter(w[4] for w in page.get_text('words'))
-        want = Counter(w for sp in SPEC for w in sp[0].split())
+        want = Counter(w for sp in SPEC for w in shown(sp[0]).split())
         assert words == want, f'PDF words differ: missing {want - words}, extra {words - want}'
         sizes = [s['size'] for b in page.get_text('dict')['blocks'] for ln in b.get('lines', [])
                  for s in ln['spans'] if s['text'].strip()]
@@ -255,8 +266,8 @@ def main():
     check_claims(n, v)
     svg = normalize(SOURCE.read_text(encoding='utf-8'))
     lines = [html.unescape(t) for t in re.findall(r'<tspan[^>]*>([^<]*)</tspan>', svg)]
-    assert Counter(lines) == Counter(sp[0] for sp in SPEC), 'text lines differ from the specification'
-    sizes = {sp[0]: sp[2] * PT for sp in SPEC}
+    assert Counter(lines) == Counter(shown(sp[0]) for sp in SPEC), 'text lines differ from the specification'
+    sizes = {shown(sp[0]): sp[2] * PT for sp in SPEC}
     assert min(sizes.values()) >= MIN_PT, f'text below {MIN_PT} pt'
     text_ = ga_text(v)
     assert 50 <= len(text_.split()) <= 80 and '—' not in text_ and not FORBIDDEN.search(text_)
