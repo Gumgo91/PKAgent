@@ -41,8 +41,8 @@ the text changes. A new page starts after a paragraph holding a manual page brea
 | Figure 2 | `python benchmarks/figures.py` | `benchmarks/evaluation/runs.csv`, reference_fit_ratios.json | `paper/figures/Figure_2.pdf`, `.png`, `.tiff` |
 | Figure 3 | `python benchmarks/figures.py` | `benchmarks/evaluation/runs.csv`, evaluation.json, effect_evidence.json | `paper/figures/Figure_3.pdf`, `.png`, `.tiff` |
 | Figure 4 | `python benchmarks/figures.py` | `benchmarks/evaluation/runs.csv`, reference fits, run folders | `paper/figures/Figure_4.pdf`, `.png`, `.tiff` |
-| Alt text (figures and graphical abstract) | written by hand; checked by `python paper/check_claims.py` (`alt_text_checks`, also run by `build_cpt.py`) | `paper/build/numbers.json`, `pkagent.config.Budget`, `src/pkagent/prompts.py`, `paper/tool_groups.py`, constants of `benchmarks/figures.py` and `paper/graphical_abstract.py`, `benchmarks/evaluation/runs.csv`, evaluation.json | `paper/figures/alt_text.txt`, copied to `paper/submission_cpt/` by `build_cpt.py` |
-| Graphical abstract (image and text) | `python paper/graphical_abstract.py` | `paper/build/numbers.json`, `paper/tool_groups.py` | `paper/figures/Graphical_abstract.pdf`, `.png`, `.tiff`, `.txt`; copies of the `.pdf`, `.tiff` and `.txt` in `paper/submission_cpt/` |
+| Alt text (figures and graphical abstract) | written by hand; checked by `python paper/check_claims.py` (`alt_text_checks`, also run by `build_cpt.py`) | `paper/build/numbers.json`, `pkagent.config.Budget`, `src/pkagent/prompts.py`, `paper/tool_groups.py`, constants of `benchmarks/figures.py`, the banner of `paper/graphical_abstract_figurelabs.py` (with the abstract in `paper/manuscript_cpt.md`), `paper/figures/Graphical_abstract.txt`, `benchmarks/evaluation/runs.csv`, evaluation.json | `paper/figures/alt_text.txt`, copied to `paper/submission_cpt/` by `build_cpt.py` |
+| Graphical abstract (image and text) | `python paper/graphical_abstract_figurelabs.py` | the FigureLabs SVG export (`paper/figures/figurelabs/ga2_v2_vector.svg`, git-ignored, or its copy `paper/figures/Graphical_abstract_source.svg`), `paper/build/numbers.json`, the abstract in `paper/manuscript_cpt.md`; the text from `ga_text` in `paper/graphical_abstract.py` | `paper/figures/Graphical_abstract_source.svg`, `Graphical_abstract.svg`, `.pdf`, `.png`, `.tiff`, `.txt`; copies of the `.pdf`, `.tiff` and `.txt` in `paper/submission_cpt/` |
 | Word templates (format only) | `python paper/templates/make_templates.py MANUSCRIPT.docx SUPPLEMENT.docx` | the manuscript and supplementary file of the author's earlier paper (read only) | `paper/templates/manuscript_template.docx`, `supplement_template.docx` |
 | Manuscript (text, figure legends, figures) | `python paper/build_cpt.py` | `paper/manuscript_cpt.md`, `paper/misleading_text.json`, `paper/build/numbers.json`, `paper/references_cpt.py`, `paper/figures/Figure_<n>.png` (embedded), `.pdf` and `.tiff`, `paper/figures/alt_text.txt`, `paper/templates/manuscript_template.docx` | `paper/submission_cpt/PKAgent_CPT_manuscript.docx`; `Figure_1` to `Figure_4` `.pdf` and `.tiff` and `alt_text.txt` copied to `paper/submission_cpt/`; `paper/build/Figure_<n>_300dpi.png` (the embedded copies), `manuscript_cpt_filled.md`, `reference_order.json` |
 | Table 1 | `python paper/build_cpt.py` | dataset facts in `table1_rows` of `build_cpt.py` (the expert statements are in Supplementary Material S1.5) | in `PKAgent_CPT_manuscript.docx` |
@@ -83,7 +83,7 @@ release archive of step 14.
    `python benchmarks/backward_baseline.py` (reads effect_evidence.json).
 10. `python paper/manuscript_numbers.py`.
 11. Figures: `python benchmarks/figures.py`, `python paper/figure1_architecture.py`,
-    `python paper/graphical_abstract.py` (reads numbers.json from step 10).
+    `python paper/graphical_abstract_figurelabs.py` (reads numbers.json from step 10).
 12. `python paper/build_cpt.py` (embeds and copies Figures 1 to 4 from step 11 and runs the claim checks). It starts
     from `paper/templates/manuscript_template.docx`; run `python paper/templates/make_templates.py MANUSCRIPT.docx SUPPLEMENT.docx` first if the
     templates are missing (they only change when the earlier paper's format does).
@@ -93,16 +93,29 @@ release archive of step 14.
 
 ## Figure 1 and the graphical abstract
 
-Figure 1 and the graphical abstract are vector drawings made by `paper/figure1_architecture.py` and
-`paper/graphical_abstract.py` with matplotlib primitives at the printed size (7.0 in wide, Arial). The tool groups and
-the tool count come from `paper/tool_groups.py`, which asserts that its groups cover exactly the tools of
-`src/pkagent/tools.py`; the numbers of the graphical abstract come from `paper/build/numbers.json`. Raster versions
-made with FigureLabs were superseded by these drawings in commit 7a1e4a7 and are not part of the repository.
+Figure 1 is a vector drawing made by `paper/figure1_architecture.py` with matplotlib primitives at the printed size
+(7.0 in wide, Arial). The tool groups and the tool count come from `paper/tool_groups.py`, which asserts that its
+groups cover exactly the tools of `src/pkagent/tools.py`. Raster versions of Figure 1 and of the first graphical
+abstract made with FigureLabs were superseded by vector drawings in commit 7a1e4a7 and are not part of the repository.
+
+The graphical abstract was redrawn with FigureLabs on 2026-10-09 when the abstract changed (one generation and one
+edit, style Flat, ratio 3:2), opened in the FigureLabs vector canvas and exported as SVG, so its shapes, icons and
+text are vector elements. `paper/graphical_abstract_figurelabs.py` removes the editor's metadata (signed links),
+sets the size, weight and color of each text line (the export had dropped bold), recolors the condition colors to
+those of Figures 2 to 4, crops the page to 7.0 x 4.375 in (CPT ratio 1.6), checks the text lines, the card claims
+against numbers.json and the banner against the last sentence of the abstract, prints the PDF with headless Chromium
+(Arial embedded, no raster image) and renders the 600-dpi PNG and the CMYK TIFF from it. The smallest text is 7.2 pt
+at print size. The raw export, the native FigureLabs rasters (1,264 x 848 JPEG), the prompt and the edit instruction
+are in `paper/figures/figurelabs/` (git-ignored, `ga2_*`). `paper/graphical_abstract.py` is the earlier matplotlib
+version; it now writes `paper/figures/Graphical_abstract_matplotlib.*` only and supplies `ga_text` and the
+number checks used by the FigureLabs script.
 
 ## Implementation notes
 
 - Tested with Python 3.13.5, NumPy 2.2.6, SciPy 1.16.1, pandas 2.3.1 and Matplotlib 3.10.5. The paper
   scripts also need python-docx (tested 1.1.2) and Pillow (tested 11.1.0): `python -m pip install -e ".[paper]"`.
+  `graphical_abstract_figurelabs.py` also needs Playwright with its Chromium (tested 1.58.0; `python -m playwright
+  install chromium`) and PyMuPDF (tested 1.28.2).
 - The figure scripts set the font to Arial; without Arial, matplotlib substitutes another font and text widths change.
 - The CMYK TIFFs are converted by `tiff_cmyk` in `benchmarks/figures.py` with the U.S. SWOP press profile shipped with
   Windows (`C:/Windows/System32/spool/drivers/color/RSWOP.icm`). Where that file does not exist, the function falls

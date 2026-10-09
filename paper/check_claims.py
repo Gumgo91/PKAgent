@@ -282,8 +282,9 @@ def alt_text_checks(numbers, runs):
     """Checks of paper/figures/alt_text.txt, the alternative text of the figures and the graphical abstract (written by
     hand; build_cpt.py copies it to paper/submission_cpt/), against the values the images show: numbers.json, the
     per-run limits (pkagent.config.Budget), the system prompt, paper/tool_groups.py, the constants of
-    benchmarks/figures.py and paper/graphical_abstract.py, runs.csv and evaluation.json. One check per image, and one
-    for the wording of all paragraphs."""
+    benchmarks/figures.py, the banner of paper/graphical_abstract_figurelabs.py (with the abstract it repeats and
+    paper/figures/Graphical_abstract.txt), runs.csv and evaluation.json. One check per image, and one for the wording
+    of all paragraphs."""
     import ast
     import matplotlib
     matplotlib.use('Agg')                                # benchmarks/figures.py imports pyplot; nothing is drawn
@@ -375,19 +376,43 @@ def alt_text_checks(numbers, runs):
           (per_cond, min(extra), max(extra), share('remifentanil', 'none', remi_other, 'hatched')))
 
     # Figure 4: run count; the highest fits, hours, and fees belong to remifentanil runs
-    check('Figure 4: runs and the highest resources',
+    check('Figure 4: runs, the highest resources, and the oral-drug final models with proportional error',
           f"the {numbers['n_runs']} runs" in f4 and len(runs) == numbers['n_runs']
+          and f"instead of exponential residual error lie {numbers['oral_mm_other_dofv']} above zero" in f4
           and all(runs.loc[runs[c].idxmax(), 'dataset'] == 'remifentanil' for c in ('fits', 'hours', 'cost_usd')))
 
-    # graphical abstract: the card values (paper/build/numbers.json, as in paper/graphical_abstract.py) and the banner
-    src = (HERE / 'graphical_abstract.py').read_text(encoding='utf-8')
-    take_home = next(ast.literal_eval(a.value) for a in ast.parse(src).body if isinstance(a, ast.Assign)
-                     and any(getattr(t, 'id', None) == 'TAKE_HOME' for t in a.targets))
-    detail = [f"{numbers['structure_all']} runs without or with the expert statement",
-              f"median of {numbers['hours_median']} hours and ${numbers['cost_median']}",
-              f"kept in {numbers['strong_kept']}", f'{N_TOOLS} tools', 'reads: ' + ' '.join(take_home)]
-    check('graphical abstract: card values, tool count, and banner', all(s in ga for s in detail),
-          [s for s in detail if s not in ga])
+    # graphical abstract (FigureLabs drawing, paper/graphical_abstract_figurelabs.py): the claims on the cards against
+    # numbers.json, the banner (the last sentence of the abstract), no fees, time or logging; and the graphical
+    # abstract text (paper/figures/Graphical_abstract.txt) against numbers.json
+    from graphical_abstract import runs_of                      # noqa: E402
+    src = (HERE / 'graphical_abstract_figurelabs.py').read_text(encoding='utf-8')
+    banner = ' '.join(next(ast.literal_eval(a.value) for a in ast.parse(src).body if isinstance(a, ast.Assign)
+                           and any(getattr(t, 'id', None) == 'BANNER' for t in a.targets)))
+    md = re.sub(r'<!--.*?-->|\{\{\w+\}\}', '', (HERE / 'manuscript_cpt.md').read_text(encoding='utf-8'))
+    abstract = re.search(r'^## ABSTRACT\s*\n(.*?)\n## ', md, re.S | re.M).group(1).strip()
+    struct_k, struct_n = runs_of(numbers['structure_all'])
+    strong_k, strong_n = runs_of(numbers['strong_kept'])
+    missed = strong_n - strong_k                                 # with the statement, every reference relationship
+    mm_k, mm_n = runs_of(numbers['oral_mm_none_mm'])
+    ref_all = [runs_of(numbers[f'{ds}_knowledge_all_ref']) for ds in ('pheno', 'remifentanil')]
+    weak_none = [runs_of(numbers[k])[0] for k in ('pheno_none_V_APGR', 'remifentanil_none_V1_AGE')]
+    detail = [f'reference structure was recovered in all {struct_n} runs',
+              'saturable elimination was inferred from the data',
+              'kept in every run' if missed == 0 else f"kept in all but {word[missed]} run{'s' if missed > 1 else ''}",
+              'were left out without knowledge, like stepwise covariate selection, and included with the expert '
+              'statement', 'reads: ' + banner]
+    ga_txt = (HERE / 'figures' / 'Graphical_abstract.txt').read_text(encoding='utf-8').strip()
+    txt_detail = [f'in all {struct_n} runs', f"in {numbers['strong_kept']}",
+                  'leaving out the two weakly supported ones', 'they included both']
+    check('graphical abstract: card claims, banner, and text',
+          all(s in ga for s in detail) and struct_k == struct_n and mm_k == mm_n
+          and banner == re.split(r'(?<=[.])\s+(?=[A-Z])', abstract)[-1]
+          and all(k == t for k, t in ref_all) and weak_none == [0, 0]
+          and numbers['scm_pheno_removed'] == 'V–APGR'
+          and numbers['backward_remifentanil_removed'] == 'the age effect on V1'
+          and all(s in ga_txt for s in txt_detail) and 50 <= len(ga_txt.split()) <= 80
+          and not re.search(r'logged|\bfees?\b|\$|\bhours?\b', ' '.join((ga, ga_txt, banner))),
+          [s for s in detail if s not in ga] + [s for s in txt_detail if s not in ga_txt])
 
     # wording: condition names as in the manuscript, no dashes, one to three sentences, the submitted files
     text = '\n'.join(paras.values())

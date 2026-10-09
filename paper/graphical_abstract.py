@@ -1,8 +1,13 @@
-"""Graphical abstract for CPT (vector, matplotlib primitives only).
+"""Matplotlib version of the graphical abstract (vector, matplotlib primitives only), kept for comparison.
+
+The submitted graphical abstract is the FigureLabs drawing built by paper/graphical_abstract_figurelabs.py, which
+uses ga_text() and load_numbers() of this module for the graphical abstract text and its checks. This script
+therefore writes its image under another name and copies nothing to paper/submission_cpt/.
 
 Three columns joined by lanes: datasets and the three knowledge conditions (left) enter the PKAgent loop (middle);
-one arrow per result card leaves it (right), colored by the condition the result belongs to (neutral for the two
-cards on the 36 runs without or with the expert statement, which say so). The take-home line sits in a banner along
+one arrow per result card leaves it (right), colored by the condition the result belongs to (neutral for the card
+on the 36 runs without or with the expert statement, which says so, and for the card on the two weakly supported
+effects, which shows both conditions). The take-home line sits in a banner along
 the bottom. Drawn at the exact CPT print size (7.0 x 4.375 in, width = 1.6 x height) and never rescaled; all
 coordinates are in inches. Colors follow Figures 2 to 4: gray no knowledge, orange expert statement (and nothing
 else), red misleading statement; the language model is teal.
@@ -12,15 +17,14 @@ paper/manuscript_numbers.py; run it first), the tool count from paper/tool_group
 benchmarks/figures.py; the text is assembled from the same values, and both are checked against each other and
 against the claims on the cards.
 
-Writes paper/figures/Graphical_abstract.pdf (vector), .png (600 dpi), .tiff (CMYK, via benchmarks/figures.py
-tiff_cmyk) and .txt (the graphical abstract text), copies the .pdf, .tiff and .txt to paper/submission_cpt/, and
-prints a text audit (every text artist with its size, the minimum size, word counts, stroke widths, overlaps).
+Writes paper/figures/Graphical_abstract_matplotlib.pdf (vector), .png (600 dpi), .tiff (CMYK, via
+benchmarks/figures.py tiff_cmyk) and .txt (the graphical abstract text), and prints a text audit (every text artist
+with its size, the minimum size, word counts, stroke widths, overlaps).
 Usage: python paper/graphical_abstract.py
 """
 import json
 import math
 import re
-import shutil
 import sys
 from itertools import combinations
 from pathlib import Path
@@ -41,9 +45,9 @@ sys.path.insert(0, str(HERE))
 from figures import COLOR, LLM, tiff_cmyk  # noqa: E402  (importing it also sets its own rcParams; ours are set below)
 from tool_groups import N_TOOLS  # noqa: E402
 
-OUT, SUB = HERE / 'figures', HERE / 'submission_cpt'
+OUT = HERE / 'figures'
 NUMBERS = HERE / 'build' / 'numbers.json'
-STEM = 'Graphical_abstract'
+STEM = 'Graphical_abstract_matplotlib'  # the submitted Graphical_abstract.* come from graphical_abstract_figurelabs.py
 W, H = 7.0, 4.375                       # print size in inches (CPT: width = 1.6 x height)
 DPI = 600
 MIN_PT = 10                             # smallest text in the image (pt)
@@ -119,6 +123,9 @@ def load_numbers():
     for ds in datasets:
         k, t = runs_of(n[f'{ds}_knowledge_all_ref'])
         assert k == t, f'{ds}: not every expert-statement run implemented every reference relationship'
+    # no knowledge: the two weakly supported effects left out in every run
+    for key in ('pheno_none_V_APGR', 'remifentanil_none_V1_AGE'):
+        assert runs_of(n[key])[0] == 0, f'{key}: a run without knowledge kept a weakly supported effect'
     # misleading statement: 'data-contradicted claims rejected', 'unsupported second compartment adopted'
     assert runs_of(n['pm_weight_kept'])[0] == runs_of(n['pm_weight_kept'])[1], 'a run dropped the weight effect'
     assert runs_of(n['pm_apgar_cl_adopted'])[0] == 0, 'a run adopted the Apgar effect on CL'
@@ -131,11 +138,12 @@ def ga_text(v):
     """Graphical abstract text (method, main result, conclusion), assembled from the same values as the image."""
     structure = (f"all {v['struct_n']} runs" if v['struct_k'] == v['struct_n']
                  else f"{v['struct_k']} of {v['struct_n']} runs")
-    return ('PKAgent lets a large language model develop population pharmacokinetic models only through the tools '
-            'of an open-source estimation engine, with every step logged. '
+    return ('PKAgent lets a large language model develop population pharmacokinetic models through the tools of an '
+            'open-source engine. '
             f"On {word(v['n_datasets'])} public datasets, {word(v['n_llm'])} language models found the reference "
-            f"structures in {structure}; without knowledge they kept the strongly supported covariate effects in "
-            f"{v['strong_phrase']}, and with an expert statement they implemented every reference relationship. "
+            f"structures in {structure}. Without knowledge, they followed the data, keeping the strongly supported "
+            f"covariate effects in {v['strong_phrase']} and leaving out the two weakly supported ones; with an expert "
+            'statement, they included both. '
             'The knowledge an analyst states shapes weakly supported effects and should be reported with the model.')
 
 plt.rcParams.update({
@@ -462,23 +470,16 @@ def build(v):
     text(ax, tx, cy - 0.15, 'reference structure', 10)
     text(ax, icol0, wtop - gh - 0.115, 'without or with the expert statement', 10)
 
-    # median per run over the same runs
+    # the two weakly supported effects: left out without knowledge, included with the expert statement (each outcome
+    # after the pictogram of its condition, as on the condition chips)
     card(ax, R0, cmed[0], R1, cmed[1], OUTG_T, OUTG)
-    text(ax, icol0, cmed[1] - 0.12, f"median per run ({v['n_runs']} runs)", 10)
-    base = cmed[0] + 0.075
-    ny = base + 0.08                           # middle of the 16-pt digits
-    x = icol0 + 0.085
-    icon_clock(ax, x, ny, DARK)
-    x += 0.135
-    hours, cost = f"{v['hours']} h", f"${v['cost']}"
-    shown['hours'], shown['cost'] = hours, cost
-    text(ax, x, base, hours, 16, 'bold', va='baseline')
-    x += text_width(fig, hours, 16, 'bold') + 0.26
-    icon_banknote(ax, x, ny, DARK)
-    x += 0.135
-    text(ax, x, base, cost, 16, 'bold', va='baseline')
-    x += text_width(fig, cost, 16, 'bold') + 0.06
-    text(ax, x, base, 'LLM fees', 10, va='baseline')
+    text(ax, icol0, cmed[1] - 0.12, 'two weakly supported effects', 10)
+    ry = cmed[0] + 0.135
+    x = icol0 + 0.08
+    for kind, label in (('none', 'left out'), ('expert', 'included')):
+        icon_condition(ax, x, ry - 0.012, kind, s=0.62)
+        text(ax, x + 0.14, ry, label, 10, 'bold')
+        x += 0.14 + text_width(fig, label, 10, 'bold') + 0.36
 
     # no knowledge: strongly supported covariate effects kept
     card(ax, R0, cnok[0], R1, cnok[1], NOK_T, NOK, accent=NOK, bar=bar)
@@ -672,7 +673,6 @@ def main():
     assert shown['strong'] == f"{v['strong_k']}/{v['strong_n']}" and v['strong_phrase'] in text_
     assert runs_of(v['strong_phrase']) == (v['strong_k'], v['strong_n'])
     assert shown['tools'] == str(N_TOOLS)
-    assert shown['hours'] == f"{v['hours']} h" and shown['cost'] == f"${v['cost']}"
     assert 50 <= len(text_.split()) <= 80, 'graphical abstract text outside 50 to 80 words'
     assert '\u2014' not in text_
     print('values:', {k: shown[k] for k in sorted(shown)}, '| runs per condition', v['cond_runs'])
@@ -684,9 +684,6 @@ def main():
     plt.close(fig)
     tiff_cmyk(OUT / f'{STEM}.png', OUT / f'{STEM}.tiff')
     (OUT / f'{STEM}.txt').write_text(text_ + '\n', encoding='utf-8')
-    SUB.mkdir(exist_ok=True)
-    for ext in ('pdf', 'tiff', 'txt'):
-        shutil.copy(OUT / f'{STEM}.{ext}', SUB / f'{STEM}.{ext}')
     print(f'Graphical abstract: {W} x {H} in (ratio {W / H:.3f}), PNG and TIFF at {DPI} dpi; '
           f'text {len(text_.split())} words')
 
