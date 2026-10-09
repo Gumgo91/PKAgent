@@ -77,7 +77,7 @@ BACK_MATTER = ('STUDY HIGHLIGHTS', 'ACKNOWLEDGMENTS', 'CONFLICT OF INTEREST', 'F
 # onto the next page). As in the template, no paragraph is kept with the next one, so a heading can fall alone at the
 # foot of a page; these break points were chosen from Word's layout of the present text (Letter, the template's margins
 # and fonts) so that none does. Check them again in Word whenever the text changes.
-BREAK_BEFORE = {'2.5 Conditions and Runs'}
+BREAK_BEFORE = {'2.5 Conditions and Runs', '3. Results'}
 SMALL_WORDS = {'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'nor', 'of', 'on', 'or', 'the', 'to',
                'versus', 'vs', 'with'}
 

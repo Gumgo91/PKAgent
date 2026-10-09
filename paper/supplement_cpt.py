@@ -368,7 +368,7 @@ def s2(d):
         ('Computing', 'one desktop computer (AMD Ryzen 5 5600, 6 cores, 12 threads, 32 GB memory, Windows 11); two '
                       'runs at a time, each with three fitting processes of two Numba threads; other computations ran '
                       'on the same computer'),
-        ('Estimation', "PKPy2 0.2.1, method='laplace': Laplace approximation of the marginal likelihood with "
+        ('Estimation', "PKPy2, method='laplace': Laplace approximation of the marginal likelihood with "
                        'expected-information (FOCE-I-type) individual curvature'),
         ('Optimizer', 'one start (the agent\'s values); L-BFGS-B, at most 150 iterations (ftol 1e-10, gtol 1e-4); '
                       'covariate coefficients scaled by the standard deviation of their covariate; linear covariate '
@@ -408,7 +408,7 @@ def s2(d):
                               'followed by removal of each remaining relationship in turn'),
         ('Development', '16 pilot runs (10 completed) on the phenobarbital and remifentanil datasets under earlier tool '
                         'versions were discarded; the system prompt was not changed after the first pilot; the code '
-                        'was frozen at PKAgent commit f5a4263 and PKPy2 0.2.1 (commit 41301f1 of '
+                        'was frozen at PKAgent commit f5a4263 and PKPy2 (commit 41301f1 of '
                         'https://github.com/Gumgo91/PKPy2) before the benchmark; covariate recall, precision and form '
                         'agreement and the misleading-statement condition were added to the evaluation after the first '
                         'replicate, and the oral MM reference residual model was changed from proportional to '

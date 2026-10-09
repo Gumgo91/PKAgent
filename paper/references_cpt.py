@@ -95,8 +95,8 @@ REFERENCES = {
                  'agentic AI. *Clin. Pharmacol. Ther.* 120, 648–662 (2026).',
     'Kong2025': 'Kong, H., Kim, I. & Zhang, B.-T. PKPy: a Python-based framework for automated population '
                 'pharmacokinetic analysis. *PeerJ* 13, e20258 (2025).',
-    'PKPy2': 'Kong, H. PKPy2: a Python framework for population pharmacokinetic and pharmacodynamic estimation, '
-             'version 0.2.1. GitHub <https://github.com/Gumgo91/PKPy2> (2026). Accessed 1 October 2026.',
+    'PKPy2': 'Kong, H. PKPy2: a Python framework for population pharmacokinetic and pharmacodynamic estimation. '
+             'GitHub <https://github.com/Gumgo91/PKPy2> (2026). Accessed 1 October 2026.',
     'Savic2009': 'Savic, R.M. & Karlsson, M.O. Importance of shrinkage in empirical Bayes estimates for diagnostics: '
                  'problems and solutions. *AAPS J.* 11, 558–569 (2009).',
     'Hooker2007': 'Hooker, A.C., Staatz, C.E. & Karlsson, M.O. Conditional weighted residuals (CWRES): a model '

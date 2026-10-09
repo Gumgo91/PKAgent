@@ -65,7 +65,7 @@ python -m pip install -e .
 The editable install (`-e`) runs PKAgent from the cloned folder, so it also reads a `.env` file in the repository root
 (see [Configuration](#configuration)) and records the PKAgent git commit in `run.json`. The other dependencies (NumPy,
 SciPy, pandas, Matplotlib and the `openai` client, which PKAgent uses for the OpenRouter API) are installed by pip;
-pandas and openai are kept below version 3. Tested with Python 3.13.5, PKPy2 0.2.1, NumPy 2.2.6, SciPy 1.16.1,
+pandas and openai are kept below version 3. Tested with Python 3.13.5, NumPy 2.2.6, SciPy 1.16.1,
 pandas 2.3.1, Matplotlib 3.10.5 and openai 2.6.1.
 
 Tests of the model specifications (no LLM calls, no fits): `python -m pip install -e ".[test]"`, then

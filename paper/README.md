@@ -102,7 +102,7 @@ made with FigureLabs were superseded by these drawings in commit 7a1e4a7 and are
 
 ## Implementation notes
 
-- Tested with Python 3.13.5, PKPy2 0.2.1, NumPy 2.2.6, SciPy 1.16.1, pandas 2.3.1 and Matplotlib 3.10.5. The paper
+- Tested with Python 3.13.5, NumPy 2.2.6, SciPy 1.16.1, pandas 2.3.1 and Matplotlib 3.10.5. The paper
   scripts also need python-docx (tested 1.1.2) and Pillow (tested 11.1.0): `python -m pip install -e ".[paper]"`.
 - The figure scripts set the font to Arial; without Arial, matplotlib substitutes another font and text widths change.
 - The CMYK TIFFs are converted by `tiff_cmyk` in `benchmarks/figures.py` with the U.S. SWOP press profile shipped with
