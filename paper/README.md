@@ -24,13 +24,12 @@ adds words that must not occur).
 portrait, margins 1.25 in left and right and 1.0 in top and bottom, no header, footer, page or line numbers, Times New
 Roman 11 pt with line spacing 1.15 and 10 pt after each paragraph, every paragraph in the Normal style with direct
 formatting (headings 12 pt bold, subsection headings and run-in labels bold), and the template's grid table style and
-cell margins. As in the templates, no paragraph has an outline level, keep with next or page break before, and no
-table row is kept from splitting (the header row of each table is repeated on every page). A new page starts after a
-paragraph holding a manual page break, built as in the template (`page_break` in `build_cpt.py`): before the
-manuscript tables and Supplementary Material S2, and before the headings and labels listed in `BREAK_BEFORE` of
-`build_cpt.py` and `supplement_cpt.py`. Without keep with next, Word does not stop a heading from falling alone at the
-foot of a page; those break points were chosen from Word's layout of the present text so that none does, and must be
-checked in Word again when the text changes.
+cell margins. As in the templates, no paragraph has an outline level or page break before, and no table row is kept
+from splitting (the header row of each table is repeated on every page). Headings, group labels, table captions and
+the Study Highlights questions are kept with the next paragraph, so that none falls alone at the foot of a page when
+the text changes. A new page starts after a paragraph holding a manual page break, built as in the template
+(`page_break` in `build_cpt.py`): before the manuscript tables and Supplementary Material S2 (`BREAK_BEFORE` in
+`supplement_cpt.py`).
 
 ## Paper items
 

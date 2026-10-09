@@ -216,6 +216,15 @@ def main():
     n['llm_calls_total'] = f"{int(main_grid['llm_calls'].sum()):,}"
     n['structure_all'] = f"{int(main_grid['structure_match'].sum())} of {len(main_grid)}"
     n['reproduced_all'] = f"{int(main_grid['reproduced'].fillna(False).astype(bool).sum())} of {len(main_grid)}"
+    # reproduction on the datasets whose reference models have covariate effects (phenobarbital, remifentanil), by
+    # condition (abstract)
+    cov = main_grid[main_grid['dataset'].isin([ds for ds in LABEL if REFERENCE[ds]])]
+    for cond in ('none', 'knowledge'):
+        g = cov[cov['condition'] == cond]
+        k = int(g['reproduced'].fillna(False).astype(bool).sum())
+        n[f'covariate_{cond}_reproduced'] = k
+        n[f'covariate_{cond}_runs'] = len(g)
+        n[f'covariate_{cond}_reproduced_phrase'] = 'none of them' if k == 0 else f'{word(k)} of them'
     for ds in LABEL:
         g = main_grid[main_grid['dataset'] == ds]
         n[f'{ds}_hours_span'] = span(g['hours'], 1)

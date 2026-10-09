@@ -14,9 +14,10 @@ left and right and 1.0 in top and bottom, no header, footer, page or line number
 1.15, 10 pt after each paragraph; every paragraph in the Normal style with direct formatting: title 13 pt bold, section
 headings 12 pt bold ('1. Introduction'), subsection headings bold ('2.1 Estimation Engine'), the template's grid table
 style with its cell margins, and, after the figure captions, each figure 6.0 in wide with a short centered caption.
-As in the template, no paragraph has an outline level, keep with next or page break before, and no table row is kept
-from splitting; the tables, and the headings in BREAK_BEFORE, start on a new page after a paragraph holding a manual
-page break (the template's).
+As in the template, no paragraph has an outline level or page break before, and no table row is kept from splitting;
+the tables start on a new page after a paragraph holding a manual page break (the template's). Headings, table captions
+and the Study Highlights questions are kept with the next paragraph (Word's keep with next), so that none falls alone at
+the foot of a page whatever the length of the text.
 CPT conventions kept: citations as superscript numbers after punctuation, numbered in order of first citation, and the
 CPT reference style; keywords, Study Highlights, Acknowledgments, and the corresponding author's postal address. The CPT
 limits (words, references, figures and tables, 130 characters per table row) are checked and printed in the console,
@@ -73,11 +74,6 @@ NUMBERED = ('INTRODUCTION', 'METHODS', 'RESULTS', 'DISCUSSION', 'CONCLUSION')
 # after the Conclusion, in the order of the template (Study Highlights and Acknowledgments added for CPT)
 BACK_MATTER = ('STUDY HIGHLIGHTS', 'ACKNOWLEDGMENTS', 'CONFLICT OF INTEREST', 'FUNDING', 'AUTHOR CONTRIBUTIONS',
                'DATA AVAILABILITY STATEMENT', 'SUPPLEMENTARY MATERIAL')
-# Headings that start a new page (page_break, without the empty paragraph of the Tables page, which could itself fall
-# onto the next page). As in the template, no paragraph is kept with the next one, so a heading can fall alone at the
-# foot of a page; these break points were chosen from Word's layout of the present text (Letter, the template's margins
-# and fonts) so that none does. Check them again in Word whenever the text changes.
-BREAK_BEFORE = {'2.5 Conditions and Runs', '3. Results'}
 SMALL_WORDS = {'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'nor', 'of', 'on', 'or', 'the', 'to',
                'versus', 'vs', 'with'}
 
@@ -232,11 +228,12 @@ def paragraph(d, text='', size=None, bold=False, before=None, after=None, center
 def heading(d, text, level):
     """Level 2: section heading, 12 pt bold, 10 pt before and 4 pt after ('Abstract', '1. Introduction'); level 3:
     subsection heading, bold at body size, 8 pt before and 2 pt after ('2.1 Estimation Engine'); numbers are part of
-    the text, as in the template. As in the template, headings are Normal paragraphs with direct formatting only: no
-    outline level (so Word shows no expand/collapse arrows), no keep with next and no page break before (a new page
-    is started by page_break)."""
+    the text, as in the template. As in the template, headings are Normal paragraphs with direct formatting: no outline
+    level (so Word shows no expand/collapse arrows) and no page break before (a new page is started by page_break);
+    each heading is kept with the next paragraph, so that it never falls alone at the foot of a page."""
     big = level <= 2
     p = paragraph(d, before=10 if big else 8, after=4 if big else 2)
+    p.paragraph_format.keep_with_next = True
     add_inline(p, text, size=12 if big else None, bold=True)
     return p
 
@@ -312,6 +309,7 @@ def add_table(d, title, header, rows, footnote, widths, size=None, literal=False
     A caller that wants the table on a new page calls page_break first. Returns the table."""
     if title:
         p = paragraph(d, before=8, after=2)
+        p.paragraph_format.keep_with_next = True             # the caption stays on the page of the table
         add_inline(p, title, bold=True)
     t = d.add_table(rows=1, cols=len(header))
     t.style = d.styles['Table Grid']
@@ -519,9 +517,7 @@ def main():
     # abstract and keywords, then the numbered sections up to the Conclusion
     blocks = {title: (lvl, paras) for lvl, title, paras in body}
 
-    def head(text, level):                                   # a heading, on a new page where BREAK_BEFORE says so
-        if text in BREAK_BEFORE:
-            page_break(d)
+    def head(text, level):
         heading(d, text, level)
     section, n_sec, n_sub = None, 0, 0
     for lvl, title, paras in body:
@@ -548,7 +544,10 @@ def main():
             continue
         head(HEADINGS[title], 2)
         for t in blocks[title][1]:
-            add_inline(d.add_paragraph(), t)
+            p = d.add_paragraph()
+            if t.startswith('**'):                           # a Study Highlights question stays with its answer
+                p.paragraph_format.keep_with_next = True
+            add_inline(p, t)
     stray = [title for lvl, title, paras in _between(body, 'STUDY HIGHLIGHTS', None) if lvl == 3]
     if stray:
         raise SystemExit(f'subsections after the Conclusion are not placed in the manuscript: {stray}')

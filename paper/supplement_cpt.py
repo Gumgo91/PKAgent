@@ -15,7 +15,8 @@ header, footer or page numbers; Times New Roman 11 pt, line spacing 1.15, 10 pt 
 the Normal style with direct formatting, all running text (the recall excerpts and final reports included) at that
 size and spacing. No title page: the file starts with the heading of S1. Section headings 12 pt bold (S2 starts on a new
 page after a paragraph holding a manual page break, as in the template, and S3 on a new page because S2 fills its last
-page; see BREAK_BEFORE), subsection headings and run-in labels bold, table captions bold, tables in the template's grid
+page; see BREAK_BEFORE; headings, group labels and table captions are kept with the next paragraph), subsection
+headings and run-in labels bold, table captions bold, tables in the template's grid
 table style and cell margins with a Normal note below them: at body size where they fit the 6.0 in text width (Tables
 S1 to S3), the wide ones at a smaller font with fixed column widths (Table S5 8.5 pt, Table S4 6 pt). As in the
 template, no paragraph has keep with next or page break before and no table row is kept from splitting; the header row
@@ -49,13 +50,11 @@ OUT = HERE / 'submission_cpt'
 FILE = 'Supplementary_Material.docx'
 OLD_FILES = [f'Supplementary_Material_S{i}.docx' for i in (1, 2, 3)]   # the earlier layout: one file per section
 CODE_SIZE = 10                              # points: Consolas of the verbatim code, close to Times New Roman 11 pt
-# Sections and group labels ('<subsection>: <label>') that start a new page (page_break). As in the template, no
-# paragraph is kept with the next one; S2 starts on a new page, and the other break points were chosen from Word's
-# layout of the present content (Letter, the template's margins and fonts) so that no label sits alone at the foot of a
-# page. S3 has no page break because S2 ends at the foot of its last page (a page break there would leave a blank
-# page). Check them again in Word whenever the content changes.
-BREAK_BEFORE = {'S2', 'S3.2: Remifentanil, no knowledge, Claude Opus 5.5, replicate 3',
-                'S3.3: Phenobarbital, misleading statement, Claude Opus 5.5, replicate 2'}
+# Sections and group labels ('<subsection>: <label>') that start a new page (page_break), as the last section of the
+# supplement template does. Headings, group labels and table captions are kept with the next paragraph, so that none
+# sits alone at the foot of a page. S3 has no page break because S2 ends at the foot of its last page (a page break
+# there would leave a blank page); check this in Word when the content of S2 changes.
+BREAK_BEFORE = {'S2'}
 BENCH = ROOT / 'benchmarks'
 DATASETS = json.loads((BENCH / 'datasets.json').read_text(encoding='utf-8'))
 LABEL = dict(pheno='Phenobarbital', remifentanil='Remifentanil', oral_mm='Oral MM (simulated)')
@@ -175,11 +174,13 @@ def labeled(d, label, body):
 
 
 def group_label(d, t, part=''):
-    """Bold label of a group of paragraphs (a dataset, a run): body size, 8 pt before and 2 pt after; on a new page
-    when f'{part}: {t}' is in BREAK_BEFORE."""
+    """Bold label of a group of paragraphs (a dataset, a run): body size, 8 pt before and 2 pt after, kept with the
+    paragraph that follows; on a new page when f'{part}: {t}' is in BREAK_BEFORE."""
     if f'{part}: {t}' in BREAK_BEFORE:
         page_break(d)
-    return paragraph(d, t, bold=True, before=8, after=2)
+    p = paragraph(d, t, bold=True, before=8, after=2)
+    p.paragraph_format.keep_with_next = True
+    return p
 
 
 def code(d, t):
