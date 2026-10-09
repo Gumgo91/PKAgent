@@ -1,6 +1,6 @@
 """Statements of a run's language model that refer to prior knowledge of a published dataset or its analysis.
 
-One definition for the evaluation and the manuscript: a word-bounded search (so 'classical', as in classical
+One definition used throughout the evaluation: a word-bounded search (so 'classical', as in classical
 allometric exponents, does not match 'classic') of the assistant text, the tool-call arguments and the reasoning
 summaries of every turn of transcript.jsonl.
 """

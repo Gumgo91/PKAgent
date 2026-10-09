@@ -3,7 +3,7 @@
 .env.*
 !.env.example
 
-# Archives (licensed NONMEM test files; the benchmark archive is attached to the release, not committed) and raw images
+# Archives (licensed NONMEM test files; benchmark archives written by benchmarks/export_archive.py) and raw images
 *.zip
 *.raw
 
@@ -55,12 +55,7 @@ benchmarks/runs/
 benchmarks/runs_prelim/
 benchmarks/evaluation/
 benchmarks/reference_fits/
-paper/build/
 
-# CPT submission build outputs
-paper/submission_cpt/
-
-# Paper: working notes, and superseded raster figures and drafts of Figure 1 kept only locally
-paper/notes/
-paper/figures/figurelabs/
-paper/figures/archive/
+# Manuscript material, kept locally (benchmarks/figures.py writes its figures to paper/figures/)
+paper/
+docs/make_readme_images.py

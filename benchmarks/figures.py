@@ -4,7 +4,7 @@ the run folders).
 Figure 2  typical values of the final models relative to the reference model (per-subject ratios), by run.
 Figure 3  covariate relationships of the reference models recovered by each run, with their likelihood evidence.
 Figure 4  model development (lowest OFV so far relative to the reference fit) and resources per run.
-Outputs: paper/figures/Figure_<n>.png and .pdf.
+Outputs: paper/figures/Figure_<n>.pdf, .png and .tiff (CMYK; needs Pillow); the folder is created if missing.
 """
 import json
 from pathlib import Path
@@ -33,11 +33,11 @@ plt.rcParams.update({'font.size': 8, 'axes.titlesize': 9, 'axes.labelsize': 8, '
                      'mathtext.it': 'Arial:italic', 'mathtext.bf': 'Arial:bold', 'text.color': '#1F2933',
                      'axes.labelcolor': '#1F2933', 'axes.edgecolor': '#1F2933', 'xtick.color': '#1F2933',
                      'ytick.color': '#1F2933'})
-WIDTH = 7.0                       # inches: a double-column CPT figure (178 mm)
+WIDTH = 7.0                       # inches: a double-column journal figure (178 mm)
 
 
 def tiff_cmyk(png, tiff):
-    """CMYK TIFF (LZW) from a 600-dpi PNG, as CPT asks for color figures."""
+    """CMYK TIFF (LZW) from a 600-dpi PNG, for color figures in print."""
     from PIL import Image, ImageCms
     Image.MAX_IMAGE_PIXELS = None
     icc = Path('C:/Windows/System32/spool/drivers/color/RSWOP.icm')   # U.S. SWOP press profile shipped with Windows

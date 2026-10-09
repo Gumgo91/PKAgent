@@ -11,15 +11,14 @@ add expert knowledge in plain language (for example "clearance and volume of dis
 weight"); the agent encodes it in the model, tests it against the data and reports the evidence. Every LLM response and
 every tool call is logged.
 
-<!-- Numbers in the graphical abstract and its alt text, from paper/build/numbers.json: structure_all (36 of 36), strong_missed_word (all but one run) -->
 ![Graphical abstract. Three public datasets (neonatal phenobarbital, adult remifentanil, and a simulated oral drug) and three conditions (no knowledge, expert statement, misleading statement) go into PKAgent, in which a language model (GPT-6.1 Sol or Claude Opus 5.5) works only through tools of the open-source PKPy2 estimation engine. Strong evidence was recovered: the reference structure in all 36 runs, saturable elimination inferred from the data, and strongly supported covariate effects kept in all but one run. Weak evidence (the Apgar score effect on phenobarbital volume and the age effect on remifentanil central volume) was left out without knowledge, like stepwise covariate selection, and included with the expert statement. With a misleading statement, claims the data contradicted were rejected but an unsupported second compartment was adopted. Bottom line: where data are strong, PKAgent recovers the model and rejects statements the data contradict; where they are weak, the model follows what the analyst states, including unsupported claims.](docs/images/graphical_abstract.png)
 
 ## How it works
 
 The LLM receives a task message with the data description, the optional expert knowledge and analysis objective, and
-the budget of the session. It never runs code. It calls 14 tools, grouped below as in
-[paper/tool_groups.py](paper/tool_groups.py) (definitions in [src/pkagent/tools.py](src/pkagent/tools.py)), and the
-session has PKPy2 fit every model.
+the budget of the session. It never runs code. It calls 14 tools in five groups (data, models, diagnostics, covariates
+and uncertainty, report; definitions in [src/pkagent/tools.py](src/pkagent/tools.py)), and the session has PKPy2 fit
+every model.
 
 ![Block diagram of PKAgent. A task (study description, optional expert statement, and a budget per run of 40 fits, 80 responses and 6 hours) goes to the language model (GPT-6.1 Sol or Claude Opus 5.5), and a data file goes into the PKAgent session. The language model writes no code; its system prompt sets the OFV decrease needed to add a parameter (at least 3.84) and to keep an effect (at least 6.63). It sends tool calls to the session and receives results and plots. The session offers 14 tools in five groups (data 4, models 4, diagnostics 3, covariates and uncertainty 2, report 1) and keeps versioned data, a model registry, the budgets with a 25 US dollar fee limit, and a log. The PKPy2 engine fits every model (Laplace FOCE-I-type estimation with L-BFGS-B; standard errors, CWRES and NPDE; VPC simulation). Outputs: the final model and report, an audit trail, and the tokens, fees and time used.](docs/images/architecture.png)
 
@@ -70,9 +69,9 @@ pandas 2.3.1, Matplotlib 3.10.5 and openai 2.6.1.
 
 Tests of the model specifications (no LLM calls, no fits): `python -m pip install -e ".[test]"`, then
 `python -m pytest`. `python tests/smoke_session.py` runs every tool in a scripted session without an LLM on the
-phenobarbital data (it fits models and needs the benchmark data, see [Benchmark](#benchmark)). The scripts that write
-the Word files and figures of the paper (`paper/`, `benchmarks/figures.py`) and the README images (`docs/`) also need
-python-docx (tested 1.1.2) and Pillow (tested 11.1.0): `python -m pip install -e ".[paper]"`.
+phenobarbital data (it fits models and needs the benchmark data, see [Benchmark](#benchmark)). The benchmark figures
+(`benchmarks/figures.py`) also need Pillow (tested 11.1.0), which writes their CMYK TIFF copies:
+`python -m pip install -e ".[figures]"`.
 
 ## Configuration
 
@@ -145,46 +144,37 @@ starts.
 ## Benchmark
 
 [benchmarks/](benchmarks/README.md) tests whether the agent reproduces reference models on three public datasets:
-phenobarbital in 59 preterm neonates <!-- numbers.json: pheno_n_subjects --> (nlmixr2data `pheno_sd`), remifentanil
-in 65 adults <!-- remifentanil_n_subjects --> (nlme `Remifentanil`) and a simulated oral drug with Michaelis-Menten
-elimination in 40 subjects <!-- oral_mm_n_subjects --> (nlmixr2data `Oral_1CPTMM`). GPT-6.1 Sol
+phenobarbital in 59 preterm neonates (nlmixr2data `pheno_sd`), remifentanil in 65 adults (nlme `Remifentanil`) and a
+simulated oral drug with Michaelis-Menten elimination in 40 subjects (nlmixr2data `Oral_1CPTMM`). GPT-6.1 Sol
 (`openai/gpt-6.1-sol`) and Claude Opus 5.5 (`anthropic/claude-opus-5.5`) analyzed each dataset without knowledge and
-with a short expert statement of the reference model, three times each (36 runs <!-- n_runs -->), and with
-deliberately misleading statements on phenobarbital and the oral drug (8 runs <!-- misleading_runs -->).
+with a short expert statement of the reference model, three times each (36 runs), and with deliberately misleading
+statements on phenobarbital and the oral drug (8 runs).
 
-Results (values from `paper/build/numbers.json`, written by `paper/manuscript_numbers.py`; the key of each value is in
-an HTML comment in the source of this file):
+Results:
 
-- **Structure and cost.** The final model had the reference structure in 36 of 36 runs <!-- structure_all -->. Over
-  these 36 runs, a run took a median of 1.2 hours <!-- hours_median --> and 0.28 US dollars of LLM
-  fees <!-- cost_median -->.
+- **Structure and cost.** The final model had the reference structure in 36 of 36 runs. Over these 36 runs, a run
+  took a median of 1.2 hours and 0.28 US dollars of LLM fees.
 - **No knowledge.** The agents kept the strongly supported covariate effects (those whose removal from the PKPy2 fit
-  of the reference model raises the OFV by at least 6.63) in 11 of 12 runs <!-- strong_kept --> on phenobarbital and
-  remifentanil. The effect with the weakest support in each of these two reference models was included in none of the
-  six runs <!-- pheno_none_V_APGR; remifentanil_none_V1_AGE -->: the Apgar score effect on phenobarbital volume, whose
-  removal raises the OFV by 4.5 <!-- evidence_pheno_V~APGR -->, and the age effect on remifentanil central volume,
-  whose removal raises it by 2.7 <!-- evidence_remifentanil_V1~AGE -->.
+  of the reference model raises the OFV by at least 6.63) in 11 of 12 runs on phenobarbital and remifentanil. The
+  effect with the weakest support in each of these two reference models was included in none of the six runs: the
+  Apgar score effect on phenobarbital volume, whose removal raises the OFV by 4.5, and the age effect on remifentanil
+  central volume, whose removal raises it by 2.7.
 - **Expert statement.** With the statement, which the system prompt tells the agent to encode and test, every
-  reference covariate relationship was in the final model in all six runs on phenobarbital <!-- pheno_knowledge_all_ref -->
-  and in all six runs on remifentanil <!-- remifentanil_knowledge_all_ref -->. Over both conditions, the final model
-  reproduced the reference model in 19 of 36 runs <!-- reproduced_all -->.
+  reference covariate relationship was in the final model in all six runs on phenobarbital and in all six runs on
+  remifentanil. Over both conditions, the final model reproduced the reference model in 19 of 36 runs.
 - **Misleading statements.** On phenobarbital, the claim of no weight effects and the claim of an Apgar effect on
-  clearance were each adopted in none of the four runs <!-- pheno_misleading_no_weight_effect;
-  pheno_misleading_Apgar_on_CL -->. On the oral drug, the claim of linear elimination was adopted in none of the four
-  runs <!-- oral_mm_misleading_linear_elimination -->, and the claim of a second compartment, which the data did not
-  support, in all four runs <!-- oral_mm_misleading_two_compartments -->.
+  clearance were each adopted in none of the four runs. On the oral drug, the claim of linear elimination was adopted
+  in none of the four runs, and the claim of a second compartment, which the data did not support, in all four runs.
 
-<!-- Values in the figure: evidence_pheno_*, evidence_remifentanil_* (OFV increase on removal); 24 runs: n_runs_covariates -->
 ![Grid of the covariate relationships of the phenobarbital and remifentanil reference models (rows, each labeled with the OFV increase on removal from the reference fit) against 24 runs (columns: per drug, six runs without knowledge and six with the expert statement; G1 to G3 GPT-6.1 Sol, C1 to C3 Claude Opus 5.5). Dark cells mark a relationship present in the reference form, hatched cells one present in another form, and white cells one that is absent; a last row counts relationships not in the reference model. With the expert statement every cell is dark. Without knowledge, all phenobarbital runs include both weight effects and lack the Apgar effect (OFV 4.5); all remifentanil runs lack the age effect on V1 (OFV 2.7), one lacks the lean body mass effect on V2, and the other effects are present in another form.](docs/images/covariate_relationships.png)
 
-*Covariate relationships of the reference models in the final models of the 24 phenobarbital and remifentanil
-runs <!-- n_runs_covariates -->. ΔOFV: increase in OFV when the relationship is removed from the PKPy2 fit of the
-reference model. G1 to G3: GPT-6.1 Sol; C1 to C3: Claude Opus 5.5. Dark: present in the reference form; hatched:
-present in another form; white: absent. Other relationships: number of covariate relationships in the final model that
-are not in the reference model.*
+*Covariate relationships of the reference models in the final models of the 24 phenobarbital and remifentanil runs.
+ΔOFV: increase in OFV when the relationship is removed from the PKPy2 fit of the reference model. G1 to G3: GPT-6.1
+Sol; C1 to C3: Claude Opus 5.5. Dark: present in the reference form; hatched: present in another form; white: absent.
+Other relationships: number of covariate relationships in the final model that are not in the reference model.*
 
-**Reproducing the benchmark.** The commands and their order are in [benchmarks/README.md](benchmarks/README.md) and,
-from the data to every paper item, in [paper/README.md](paper/README.md).
+**Reproducing the benchmark.** The scripts and the order in which to run them are in
+[benchmarks/README.md](benchmarks/README.md).
 
 1. Data: the source datasets are not redistributed. [benchmarks/export_data.R](benchmarks/export_data.R) exports them
    from the R packages nlme 3.1-168 and nlmixr2data 2.0.10, and `benchmarks/prepare_data.py` writes the analysis files:
@@ -195,15 +185,15 @@ from the data to every paper item, in [paper/README.md](paper/README.md).
    python benchmarks/run_benchmark.py --all --datasets pheno oral_mm --conditions misleading --models gpt claude \
        --reps 2 --jobs 2 --workers 3 --threads 2
    ```
-   New runs differ from those of the paper, because LLM sampling is not seeded.
+   New runs differ from the runs reported here, because LLM sampling is not seeded.
+3. Reference fits, evaluation, figures and an archive of the outputs: `benchmarks/reference_fits.py`,
+   `benchmarks/evaluate.py`, `benchmarks/figures.py` and `benchmarks/export_archive.py`, in the order given in
+   [benchmarks/README.md](benchmarks/README.md).
 
 ## Paper
 
-Manuscript in preparation. [paper/README.md](paper/README.md) gives the command, inputs and outputs of every number,
-table, figure and supplementary item, and the order in which to run them. The images in this README are web-sized
-copies of the paper's graphical abstract and Figures 1 and 3, made by
-[docs/make_readme_images.py](docs/make_readme_images.py) from the outputs of `paper/graphical_abstract.py`,
-`paper/figure1_architecture.py` and `benchmarks/figures.py`.
+The benchmark is described in a manuscript in preparation. Until it is published, please cite the software (see
+[Citation](#citation)).
 
 ## Repository layout
 
@@ -211,8 +201,7 @@ copies of the paper's graphical abstract and Figures 1 and 3, made by
 |---|---|
 | `src/pkagent/` | the agent: session and tools, model specifications, prompts, LLM client, report |
 | `benchmarks/` | benchmark definition (`datasets.json`) and the scripts for the runs, reference fits, evaluation, Figures 2 to 4 and an archive of the outputs |
-| `paper/` | scripts for the numbers, claim checks, Figure 1, graphical abstract and Word files of the paper |
-| `docs/` | the README images and the script that makes them |
+| `docs/` | the images of this README |
 | `tests/` | tests of the model specifications and a scripted session without an LLM |
 
 ## Citation

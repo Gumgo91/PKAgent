@@ -14,7 +14,7 @@ pharmacokinetic models, and what does a short expert statement change?
 The source documentation of `Oral_1CPTMM` gives 20% residual error without its type. `residual_check.py` showed,
 after all runs had finished, that the error is exponential, so the reference model uses log-normal error; the
 benchmark definition frozen before the runs (commit f5a4263) used proportional error, and that reference fit is kept
-in `reference_fits/oral_mm_proportional` (Supplementary Material S2).
+in `reference_fits/oral_mm_proportional`.
 
 `datasets.json` holds, for each dataset, the description given to the agent (study design and column meanings; it
 names the drug where there is one but not the source publication), the expert statement (one sentence; two for
@@ -34,7 +34,7 @@ verifiable reference model).
 - `misleading` (misleading statement; `pheno` and `oral_mm` only): the same as `knowledge`, with the deliberately
   wrong statement of `datasets.json` in place of the expert statement.
 
-The runs of the paper use `openai/gpt-6.1-sol` and `anthropic/claude-opus-5.5` through OpenRouter: three replicates
+The benchmark runs use `openai/gpt-6.1-sol` and `anthropic/claude-opus-5.5` through OpenRouter: three replicates
 per dataset, condition (`none`, `knowledge`) and LLM (36 runs), and two replicates per LLM of the `misleading`
 condition on `pheno` and `oral_mm` (8 runs). Replicates differ in LLM sampling (provider defaults, not seeded) and in
 the seed that PKAgent passes to the engine (20261001 + replicate). Limits per run (`pkagent.config.Budget`): 40 fits
@@ -49,7 +49,7 @@ python benchmarks/run_benchmark.py --all --datasets pheno oral_mm --conditions m
 ```
 
 Runs need `OPENROUTER_API_KEY` and write to `runs/<dataset>/<condition>/<model>/rep<k>/`; a run whose `results.json`
-exists is skipped. New runs differ from those of the paper, because LLM sampling is not seeded.
+exists is skipped. New runs differ from earlier ones, because LLM sampling is not seeded.
 
 ## Reference fits
 
@@ -57,7 +57,7 @@ exists is skipped. New runs differ from those of the paper, because LLM sampling
 agent uses (no LLM; two starts, the published values and one perturbation; 60-minute limit), which checks that the
 specification language expresses it and gives the OFV of the reference model on the same data and engine. Results:
 `reference_fits/<dataset>/reference_fit.json`. `reference_table.py` compares the estimates with the published values
-(`evaluation/reference_table.csv`, Table S2), and `reference_vpc.py` runs the VPCs of the reference fits with the
+(`evaluation/reference_table.csv` and `.md`), and `reference_vpc.py` runs the VPCs of the reference fits with the
 settings of the final models (500 simulations, 8 bins, the default seed; `reference_fits/<dataset>/vpc.json`).
 
 ## Evaluation
@@ -84,16 +84,39 @@ Further scripts:
 - `agent_tests.py`: what each agent tested (covariate and structural tests from its model registry) and its tool use
   (`evaluation/agent_tests.json`; no refitting).
 - `effect_evidence.py`: the increase in OFV when each covariate relationship is removed from the reference fit
-  (`evaluation/effect_evidence.json`, Table S3).
+  (`evaluation/effect_evidence.json`).
 - `scm_baseline.py pheno`: stepwise covariate modeling without an LLM (`evaluation/scm_baseline.json`).
 - `backward_baseline.py`: backward elimination from the remifentanil reference model
   (`evaluation/backward_baseline.json`).
 - `residual_check.py`: the residual error type of the oral MM simulation (`evaluation/oral_mm_residual_check.json`).
-- `recall.py`: the search for statements that refer to prior knowledge of a dataset (used by `evaluate.py` and the
-  paper scripts).
-- `figures.py`: Figures 2 to 4 of the paper.
+- `recall.py`: the search for statements that refer to prior knowledge of a dataset (used by `evaluate.py`).
+- `figures.py`: Figures 2 to 4: typical values of the final models relative to the reference model, the covariate
+  relationships of the reference models recovered by each run, and model development and resources per run
+  (`paper/figures/Figure_<n>.pdf`, `.png` and a CMYK `.tiff`; the folder is created if missing). The TIFFs need
+  Pillow: `python -m pip install -e ".[figures]"`.
 - `export_archive.py`: one archive of the runs, reference fits and evaluation, without data files or local paths
-  (`dist/PKAgent_benchmark_archive.zip`).
+  (`dist/PKAgent_benchmark_archive.zip`); `--text-only` leaves out the plots and the per-observation diagnostics and
+  adds a README.txt on the files, and `--out PATH` writes the archive elsewhere.
 
-The order of all commands, from the data to the submission files, and the paper item each one produces are in
-`paper/README.md`.
+## Order of the commands
+
+All commands run from the repository root. Steps marked *fits* run PKPy2 fits or simulations, and step 2 calls the
+language models; the other steps read existing files. The run folders, reference fits and evaluation outputs
+(`runs/`, `reference_fits/`, `evaluation/`) are not tracked by git.
+
+1. Data: `Rscript benchmarks/export_data.R`, then `python benchmarks/prepare_data.py` (R packages nlme 3.1-168 and
+   nlmixr2data 2.0.10).
+2. Runs: the `run_benchmark.py` commands above (needs `OPENROUTER_API_KEY`).
+3. Reference fits (*fits*): `python benchmarks/reference_fits.py pheno remifentanil oral_mm`, then
+   `python benchmarks/reference_table.py`.
+4. `python benchmarks/reference_vpc.py` (*fits*): VPCs of the reference fits.
+5. `python benchmarks/residual_check.py`: residual error type of the oral MM simulation.
+6. `python benchmarks/standard_vpc.py` (*fits*): standard final VPCs, read by `evaluate.py`.
+7. `python benchmarks/evaluate.py`.
+8. `python benchmarks/agent_tests.py`.
+9. Baselines (*fits*): `python benchmarks/effect_evidence.py`, `python benchmarks/scm_baseline.py pheno`,
+   `python benchmarks/backward_baseline.py` (reads `effect_evidence.json`).
+10. Figures 2 to 4: `python benchmarks/figures.py`.
+11. Archive: `python benchmarks/export_archive.py` writes the runs, reference fits and evaluation with their plots to
+    `dist/PKAgent_benchmark_archive.zip`; `python benchmarks/export_archive.py --text-only --out PATH` writes only the
+    text files, with a README.txt on the files, to `PATH`. Data files are left out and local paths removed in both.

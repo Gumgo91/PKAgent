@@ -37,7 +37,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
-paper = ["python-docx>=1.1", "Pillow>=11"]   # Word files and figures: paper/, benchmarks/figures.py, docs/
+figures = ["Pillow>=11"]   # CMYK TIFF copies of the benchmark figures (benchmarks/figures.py)
 
 [project.scripts]
 pkagent = "pkagent.cli:main"
