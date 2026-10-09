@@ -196,11 +196,6 @@ from the data to every paper item, in [paper/README.md](paper/README.md).
        --reps 2 --jobs 2 --workers 3 --threads 2
    ```
    New runs differ from those of the paper, because LLM sampling is not seeded.
-3. Runs of the paper: the release of tag
-   [`cpt-submission`](https://github.com/Gumgo91/PKAgent/releases/tag/cpt-submission) carries
-   `PKAgent_benchmark_archive.zip` with the run logs, reference fits and evaluation outputs (made by
-   [benchmarks/export_archive.py](benchmarks/export_archive.py)). Extracted in the repository root, it restores
-   `benchmarks/runs/`, `benchmarks/reference_fits/` and `benchmarks/evaluation/`; the data files are left out.
 
 ## Paper
 
@@ -215,7 +210,7 @@ copies of the paper's graphical abstract and Figures 1 and 3, made by
 | Folder | Content |
 |---|---|
 | `src/pkagent/` | the agent: session and tools, model specifications, prompts, LLM client, report |
-| `benchmarks/` | benchmark definition (`datasets.json`) and the scripts for the runs, reference fits, evaluation, Figures 2 to 4 and the release archive |
+| `benchmarks/` | benchmark definition (`datasets.json`) and the scripts for the runs, reference fits, evaluation, Figures 2 to 4 and an archive of the outputs |
 | `paper/` | scripts for the numbers, claim checks, Figure 1, graphical abstract and Word files of the paper |
 | `docs/` | the README images and the script that makes them |
 | `tests/` | tests of the model specifications and a scripted session without an LLM |

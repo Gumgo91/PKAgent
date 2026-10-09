@@ -1,4 +1,4 @@
-"""Archive of the benchmark for publication as a release asset of the repository.
+"""One archive of the benchmark outputs (runs, reference fits, evaluation) without data files or local paths.
 
 Contents: runs (every run: prompts, transcripts with reasoning summaries, tool calls and results, fitted models,
 plots, reports), reference_fits and evaluation (incl. agent tests, stepwise baseline, drop-one evidence). The data

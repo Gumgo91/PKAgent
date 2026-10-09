@@ -19,7 +19,7 @@ the tables start on a new page after a paragraph holding a manual page break (th
 and the Study Highlights questions are kept with the next paragraph (Word's keep with next), so that none falls alone at
 the foot of a page whatever the length of the text.
 CPT conventions kept: citations as superscript numbers after punctuation, numbered in order of first citation, and the
-CPT reference style; keywords, Study Highlights, Acknowledgments, and the corresponding author's postal address. The CPT
+CPT reference style; keywords, Study Highlights, and the corresponding author's postal address. The CPT
 limits (words, references, figures and tables, 130 characters per table row) are checked and printed in the console,
 not written in the document; the final build is refused when one is exceeded or a claim check fails. Word's own count
 of the main text, which includes the template's section numbers, is printed too, with a warning (not a refusal) when it
@@ -59,20 +59,17 @@ FUNDING = 'No funding was received for this work.'
 COI = 'The authors declared no competing interests for this work.'
 CONTRIBUTIONS = ('H.K. wrote the manuscript; H.K. designed the research; H.K. performed the research; H.K. analyzed '
                  'the data; H.K. contributed new reagents/analytical tools.')
-AI_DISCLOSURE = ('[To be completed by the author: disclosure of any use of artificial intelligence tools in preparing '
-                 'this manuscript, as required by the journal (tool name and version, date of use, role, and how the '
-                 'author reviewed the output). The language models evaluated in this study are described in Methods.]')
 
 # headings of paper/manuscript_cpt.md as printed (the template's wording); the main sections are numbered
 HEADINGS = {'ABSTRACT': 'Abstract', 'INTRODUCTION': 'Introduction', 'METHODS': 'Methods', 'RESULTS': 'Results',
             'DISCUSSION': 'Discussion', 'CONCLUSION': 'Conclusion', 'STUDY HIGHLIGHTS': 'Study Highlights',
-            'ACKNOWLEDGMENTS': 'Acknowledgments', 'CONFLICT OF INTEREST': 'Conflict of Interest Statement',
+            'CONFLICT OF INTEREST': 'Conflict of Interest Statement',
             'FUNDING': 'Funding', 'AUTHOR CONTRIBUTIONS': 'Author Contributions',
             'DATA AVAILABILITY STATEMENT': 'Data Availability Statement',
             'SUPPLEMENTARY MATERIAL': 'Supporting Information', 'FIGURE LEGENDS': 'Figure captions'}
 NUMBERED = ('INTRODUCTION', 'METHODS', 'RESULTS', 'DISCUSSION', 'CONCLUSION')
-# after the Conclusion, in the order of the template (Study Highlights and Acknowledgments added for CPT)
-BACK_MATTER = ('STUDY HIGHLIGHTS', 'ACKNOWLEDGMENTS', 'CONFLICT OF INTEREST', 'FUNDING', 'AUTHOR CONTRIBUTIONS',
+# after the Conclusion, in the order of the template (Study Highlights added for CPT)
+BACK_MATTER = ('STUDY HIGHLIGHTS', 'CONFLICT OF INTEREST', 'FUNDING', 'AUTHOR CONTRIBUTIONS',
                'DATA AVAILABILITY STATEMENT', 'SUPPLEMENTARY MATERIAL')
 SMALL_WORDS = {'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'nor', 'of', 'on', 'or', 'the', 'to',
                'versus', 'vs', 'with'}
@@ -442,7 +439,6 @@ def main():
     extra = HERE / 'misleading_text.json'
     if misleading and extra.exists():
         numbers.update(json.loads(extra.read_text(encoding='utf-8')))
-    numbers['ai_disclosure'] = f'⟦HL⟧{AI_DISCLOSURE}⟦/HL⟧'
     numbers['author_contributions'] = CONTRIBUTIONS
     numbers['funding'] = FUNDING                         # the Funding and Conflict of Interest Statement sections
     numbers['coi'] = COI
@@ -491,14 +487,8 @@ def main():
         print('WARNING:', p)
     if problems and '--draft' not in sys.argv:
         raise SystemExit('final build refused (use --draft to build anyway): ' + '; '.join(problems))
-    if AI_DISCLOSURE.lstrip().startswith('[To be completed'):          # reported, but the build is not refused
-        print('WARNING: the AI-use disclosure is still a placeholder (AI_DISCLOSURE in paper/build_cpt.py; printed '
-              'highlighted in Acknowledgments and in the cover letter); the author must write it before submission.')
-    links = re.findall(r'(https://github\.com/\S+) \(tag ([^)]+)\)', text)
-    print('REMINDER: before submission, these Data Availability links must exist (not checked here): '
-          + '; '.join(f'{url} tag {tag}' for url, tag in links)
-          + ('; the release of the first tag must carry the run logs, reference fits, and evaluation outputs.'
-             if 'attached to that release' in text else '.'))
+    links = sorted(set(re.findall(r'https://github\.com/[\w.-]+/[\w.-]*\w', text)))
+    print('REMINDER: before submission, these repositories must be public (not checked here): ' + '; '.join(links))
 
     unknown = [title for lvl, title, paras in body if lvl == 2 and title not in HEADINGS]
     if unknown:
@@ -674,7 +664,7 @@ def cover_letter():
     today = dt.date.today()
     numbers = json.loads((BUILD / 'numbers.json').read_text(encoding='utf-8'))     # run counts as in the manuscript
     values = dict(numbers, date=f'{today:%B} {today.day}, {today.year}', title=TITLE,
-                  ai_disclosure=f'⟦HL⟧{AI_DISCLOSURE}⟦/HL⟧', corresponding='\n'.join(signature_lines()))
+                  corresponding='\n'.join(signature_lines()))
     text = (HERE / 'cover_letter_cpt.md').read_text(encoding='utf-8')
     text = re.sub(r'\{\{(\w+)\}\}', lambda m: str(values[m.group(1)]), text)
     d = base_document()

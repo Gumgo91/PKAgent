@@ -49,8 +49,7 @@ python benchmarks/run_benchmark.py --all --datasets pheno oral_mm --conditions m
 ```
 
 Runs need `OPENROUTER_API_KEY` and write to `runs/<dataset>/<condition>/<model>/rep<k>/`; a run whose `results.json`
-exists is skipped. New runs differ from those of the paper, which are in the release archive
-(`export_archive.py`).
+exists is skipped. New runs differ from those of the paper, because LLM sampling is not seeded.
 
 ## Reference fits
 
@@ -93,7 +92,7 @@ Further scripts:
 - `recall.py`: the search for statements that refer to prior knowledge of a dataset (used by `evaluate.py` and the
   paper scripts).
 - `figures.py`: Figures 2 to 4 of the paper.
-- `export_archive.py`: the release archive of the runs, reference fits and evaluation
+- `export_archive.py`: one archive of the runs, reference fits and evaluation, without data files or local paths
   (`dist/PKAgent_benchmark_archive.zip`).
 
 The order of all commands, from the data to the submission files, and the paper item each one produces are in

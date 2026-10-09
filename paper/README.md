@@ -62,17 +62,17 @@ the text changes. A new page starts after a paragraph holding a manual page brea
 
 Steps marked *fits* run PKPy2 fits or simulations; step 2 calls the language models. The other steps read existing
 files. The run folders, reference fits and evaluation outputs (`benchmarks/runs/`, `reference_fits/`, `evaluation/`)
-and the build outputs (`paper/build/`, `paper/submission_cpt/`) are not tracked by git; the first three are in the
-release archive of step 14.
+and the build outputs (`paper/build/`, `paper/submission_cpt/`) are not tracked by git; step 14 packs the first three
+into one archive.
 
 1. Data: `Rscript benchmarks/export_data.R`, then `python benchmarks/prepare_data.py` (R packages nlme 3.1-168 and
    nlmixr2data 2.0.10).
 2. Runs: the `run_benchmark.py` commands in `benchmarks/README.md` (needs `OPENROUTER_API_KEY`). New runs differ from
-   those of the paper, because LLM sampling is not seeded; the runs of the paper are in the release archive (step 14).
+   those of the paper, because LLM sampling is not seeded.
 3. Reference fits (*fits*): `python benchmarks/reference_fits.py pheno remifentanil oral_mm`, then
    `python benchmarks/reference_table.py`. Supplementary Material S2 also reads
    `benchmarks/reference_fits/oral_mm_proportional`, the oral MM reference fit with proportional error from before
-   commit fdd311d; the script now fits log-normal error, so that folder comes from the release archive.
+   commit fdd311d; the script now fits log-normal error, so that folder is kept from the earlier fit.
 4. `python benchmarks/reference_vpc.py` (*fits*): VPCs of the reference fits.
 5. `python benchmarks/residual_check.py`: residual error type of the oral MM simulation.
 6. `python benchmarks/standard_vpc.py` (*fits*): standard final VPCs; `evaluate.py` reads its output, so it runs
@@ -88,8 +88,8 @@ release archive of step 14.
     from `paper/templates/manuscript_template.docx`; run `python paper/templates/make_templates.py MANUSCRIPT.docx SUPPLEMENT.docx` first if the
     templates are missing (they only change when the earlier paper's format does).
 13. `python paper/supplement_cpt.py`: the one supplementary file, from `paper/templates/supplement_template.docx`.
-14. `python benchmarks/export_archive.py`: the release archive of the runs, reference fits and evaluation (no data
-    files; local paths removed).
+14. `python benchmarks/export_archive.py`: one archive of the runs, reference fits and evaluation (no data files;
+    local paths removed).
 
 ## Figure 1 and the graphical abstract
 
@@ -122,8 +122,8 @@ number checks used by the FigureLabs script.
   back without a warning to Pillow's plain RGB-to-CMYK conversion, which uses no black ink, so the TIFFs differ from
   the submitted ones; the PDF and PNG files do not depend on the profile.
 - The figure scripts contain no random elements.
-- `build_cpt.py` warns while the AI-use disclosure (`AI_DISCLOSURE`) is a placeholder and prints the repository links
-  of the Data Availability Statement, which must exist before submission.
+- `build_cpt.py` prints the repository links of the Data Availability Statement, which must be public before
+  submission.
 - The 4,000-word limit is checked (and the final build refused) on the script's count of Introduction to Conclusion with
   the headings but without the section numbers of the template ('2.1'). Word's own count of the same text is larger: it
   counts the section numbers and splits words at en and em dashes ('Michaelis–Menten', citation ranges such as '8–12').
