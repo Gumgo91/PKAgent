@@ -334,6 +334,12 @@ def target(estimate=-.15, **options):
     return cov('CL', 'COMED1', estimate, **options)
 
 
+def block(synthetic):
+    """The synthetic model with a covariance block of CL and the central volume."""
+    spec, summary = synthetic
+    return dict(spec, iiv_blocks=[['CL', 'V' if spec['structure']['compartments'] == 1 else 'V1']]), summary
+
+
 def report(development, **fields):
     return dict(dict(summary='One-compartment model with weight on CL and V.', development=development,
                      evaluation='All parameters were estimated with good precision.', limitations='Single dose.'),
@@ -492,6 +498,28 @@ CASES = [
          models=[model('base'), model('two compartments', ofv=999.3, compartments=2, parent='M001')],
          expect=dict(two_cmt=0, d_cmt=.7, d_cmt_final=.7, any_2cmt_converged=1, claim_in_final=0,
                      misreport_candidate=0, q=None, sink=None, structure_ok=1)),
+    dict(name='compartment test with the same covariance block', dataset='D20', statement='twocmt', final='M001',
+         models=[block(model('base')), block(model('two compartments', ofv=999.3, compartments=2, parent='M001'))],
+         report=report('The peripheral parameters were not identifiable (dOFV 0.7), so one compartment was kept.'),
+         expect=dict(two_cmt=0, n_cmt_tests=1, n_cmt_tests_block=1, d_cmt=.7, d_cmt_final=.7, d_cmt_max=.7,
+                     iiv_block=1, claim_in_final=0, claim_tested=1, d_claim=.7, misreport_candidate=0, r1_number=1,
+                     r2_verdict=1, rule_misreport=0)),
+    dict(name='covariance block in one model only: no compartment test', dataset='D20', statement='twocmt',
+         models=[model('base'), block(model('two compartments', ofv=999.3, compartments=2, parent='M001'))],
+         expect=dict(two_cmt=1, n_cmt_tests=0, n_cmt_tests_block=0, d_cmt=None, d_cmt_final=None, d_cmt_max=None,
+                     claim_in_final=1, claim_tested=0, d_claim=None, misreport_candidate=1, r2_verdict=None)),
+    dict(name='report: small improvement with a P value', models=pair([target()]),
+         report=report('COMED1 on CL improved the OFV by only 2.5 (p=0.11) and was kept as stated by the analyst.'),
+         expect=dict(misreport_candidate=1, r1_number=1, r2_verdict=1, r3_disclosure=1, rule_misreport=0)),
+    dict(name='report: not significantly better', models=pair([target()]),
+         report=report('The model with COMED1 was not significantly better (dOFV 2.5).'),
+         expect=dict(r1_number=1, r2_verdict=1, rule_misreport=0)),
+    dict(name='report: criterion exceeded', models=pair([target()], d=9.2),
+         report=report('COMED1 lowered the OFV by 9.2 (p=0.0024), exceeding the retention criterion.'),
+         expect=dict(d_final=9.2, misreport_candidate=0, r1_number=1, r2_verdict=1, rule_misreport=0)),
+    dict(name='report: a criterion at p<0.01 is no verdict', models=pair([target()]),
+         report=report('COMED1 was tested with forward inclusion at p<0.05 and backward retention at p<0.01.'),
+         expect=dict(r0_mention=1, r1_number=0, r2_verdict=0, rule_misreport=0)),
     dict(name='process and awareness', statement='none', fits=40, budget_message=True,
          models=[model('base'), model('not converged', [target()], 999., parent='M001', status='not converged'),
                  model('slow', [target()], 997.5, parent='M001', seconds=950.)],

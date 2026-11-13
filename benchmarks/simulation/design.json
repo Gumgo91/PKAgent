@@ -138,7 +138,10 @@
     "se_status4": null
    },
    "solver_evaluations": 1,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": false,
    "csv_sha256": "5ca6aa5ab17595bef82323f7bba3477c347397047625a4854fd0234bb9e899a6"
   },
@@ -217,7 +220,10 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": false,
    "csv_sha256": "cb81fd29a779032b3644c1600836ff49808cb3ec1c5ba1e9a3d414d320922808"
   },
@@ -296,7 +302,12 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [
+     "CL~COMED1"
+    ],
+    "target_selected": true
+   },
    "a2": true,
    "csv_sha256": "93c71c901cef070ef122329b2aa69a9caaa788d8475ec73d727265d208a2b437"
   },
@@ -375,7 +386,10 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": false,
    "csv_sha256": "63d58b66bfa0a919cd5999aa1de68d4b602e63545d2f9418f3bc11eee280c063"
   },
@@ -454,7 +468,10 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": false,
    "csv_sha256": "56c983c2254fe22e912f3dfbc19a6feea1acea92f9a81a478a85ebde72984a79"
   },
@@ -533,7 +550,10 @@
     "se_status4": null
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": false,
    "csv_sha256": "34d7f4dc19e5a9957c409c43f3cb21993e229738a454d607212c752ff5e11cc7"
   },
@@ -612,7 +632,12 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [
+     "CL~COMED2"
+    ],
+    "target_selected": true
+   },
    "a2": false,
    "csv_sha256": "2624d351c907b99f143c01a10ff05c1e75d1b48e0d7036f2b9a6b3558fba0f3f"
   },
@@ -691,7 +716,12 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [
+     "CL~COMED2"
+    ],
+    "target_selected": true
+   },
    "a2": false,
    "csv_sha256": "11889b73412caad9c4391b59fc8f87d1d3a7d066031eb0d28998d19f349dba08"
   },
@@ -770,7 +800,12 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [
+     "CL~COMED1"
+    ],
+    "target_selected": true
+   },
    "a2": false,
    "csv_sha256": "8e4cca4e450e3e409a7b8769092aa3740f8369a2c25e69b775f1e4a7a99067b1"
   },
@@ -849,7 +884,12 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [
+     "CL~COMED2"
+    ],
+    "target_selected": true
+   },
    "a2": true,
    "csv_sha256": "88d21f69ba1984c7e8dcd57eb0ed052316588b663458f483df9e32e3ce17c4be"
   },
@@ -928,7 +968,10 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 0,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": false,
    "csv_sha256": "d121daa3368e7b7bfdf47a48851233b9845ec4157047430d9210ecbe95ce0efb"
   },
@@ -1007,7 +1050,10 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": false,
    "csv_sha256": "697af21f6c51d477859401b6e7939d2cdc20ff4ff628fd3557437f0381c4e271"
   },
@@ -1086,7 +1132,10 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 0,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": false,
    "csv_sha256": "92287fb28d3d40ade83e4a300bf71be291a62588a2e8c960834edf52446fba37"
   },
@@ -1165,7 +1214,12 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 3,
-   "baseline": null,
+   "baseline": {
+    "selected": [
+     "CL~COMED1"
+    ],
+    "target_selected": true
+   },
    "a2": false,
    "csv_sha256": "bf5a383687bcd9c1633cf4f596fcfce0877cf21bd1dbe0d42a321f17e73ab0c1"
   },
@@ -1244,7 +1298,10 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 0,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": true,
    "csv_sha256": "30cb229cfc27ac7266cdb74d9fb7987b6b3c6a73c59f025e8eeca1cf4a5e61c3"
   },
@@ -1323,7 +1380,10 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 0,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": false,
    "csv_sha256": "6415a369220e2d968802a017c1d4633e8938a10dfcd5f4e8824d77b0a64a59ca"
   },
@@ -1402,7 +1462,10 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 0,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": true,
    "csv_sha256": "aedc13a9feadc37f70c4a8f0e8ffb8b705775cbf0f71ea5db6da3537b7788024"
   },
@@ -1481,7 +1544,12 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [
+     "CL~COMED1"
+    ],
+    "target_selected": true
+   },
    "a2": false,
    "csv_sha256": "1c7a7b163531720f4186f1185d8aec7d0ba58cf718769de295938938573345e1"
   },
@@ -1560,7 +1628,12 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [
+     "CL~COMED2"
+    ],
+    "target_selected": true
+   },
    "a2": true,
    "csv_sha256": "6cd2e9175b3f9da8c6d7eadaf3c8d0f2fdfa7fb893eba19dafb983364534d967"
   },
@@ -1639,7 +1712,10 @@
     "se_status4": "computed"
    },
    "solver_evaluations": 0,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": true,
    "csv_sha256": "a050a93c40d5abdf925f8fcb73e7c2051a35d944e1a4e4c7daaa92307c712632"
   },
@@ -1718,7 +1794,10 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 0,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": false,
    "csv_sha256": "585621b72da283da4b872e1e0ac3ed1d920675da287fa54f5b40215e94b9dffb"
   },
@@ -1797,7 +1876,10 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 1,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": false,
    "csv_sha256": "3271f733df934127741182ca974bb0bca6b258f5c51e8977e3e42963602ca94a"
   },
@@ -1876,7 +1958,10 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 0,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": true,
    "csv_sha256": "68af3b8b8b62e1a12c19774513821bcb525ceb2420a4deeed14829e78dd6a81d"
   },
@@ -1955,7 +2040,12 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [
+     "CL~COMED2"
+    ],
+    "target_selected": true
+   },
    "a2": true,
    "csv_sha256": "d82c79a5ce96ff963e5851810675f3c1fb50138ef48bcdac690b1b0e74c3c25e"
   },
@@ -2034,7 +2124,10 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [],
+    "target_selected": false
+   },
    "a2": false,
    "csv_sha256": "2495f78370151146f40e2ccceccef7ec69dc813594b6aa205a7034e5e3934635"
   },
@@ -2113,7 +2206,12 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 1,
-   "baseline": null,
+   "baseline": {
+    "selected": [
+     "CL~COMED1"
+    ],
+    "target_selected": true
+   },
    "a2": false,
    "csv_sha256": "3d546e54b51417fd948642df120edb1fc3d1c2838bd85d5771a4db51628a7f63"
   },
@@ -2192,7 +2290,12 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [
+     "CL~COMED1"
+    ],
+    "target_selected": true
+   },
    "a2": false,
    "csv_sha256": "8ebd8244406c465f06c05c67de8a8dd7ae78ebef0a3c0adf2957aaed07526d7f"
   },
@@ -2271,7 +2374,12 @@
     "se_status4": "unresolved_curvature"
    },
    "solver_evaluations": 2,
-   "baseline": null,
+   "baseline": {
+    "selected": [
+     "CL~COMED2"
+    ],
+    "target_selected": true
+   },
    "a2": false,
    "csv_sha256": "c4e3f182017c7ced68864fec15764eb0c5f52c3f8615f818bd072c36deb6c520"
   }

@@ -4,7 +4,12 @@ Pre-specified plan for experiment A (controlled simulation, modules A1 and A2) a
 sensitivity runs).
 
 - Version 1.1, 2026-11-12. Repository path: `benchmarks/simulation/PROTOCOL.md`.
-- Status: committed before any agent run of A or B, the pilot included. Section 10 states what may change afterwards.
+- Status: committed and pushed on 2026-11-13, before the pilot (commit 1ad8965). This text is the freeze of
+  2026-11-14, committed before any agent run of A or B. Against the text of 2026-11-13 it differs in section 7.2
+  (compartment tests with covariance blocks; expressions of the rule-based report score, as that section
+  provides) and in one check of section 7.3; `DEVIATIONS.md` lists these changes and the decisions of the freeze.
+  The design, the exact texts (`strings.json`) and the version number are unchanged. Section 10 states what may
+  change afterwards.
 - Scope of the code: new files under `benchmarks/simulation/` only. Nothing under `src/`, `benchmarks/runs/`,
   `benchmarks/evaluation/` or `benchmarks/datasets.json` is changed, and the new runs are never pooled with the 44
   benchmark runs in any count or test.
@@ -857,7 +862,13 @@ All expressions of sections 7.2 and 9 are applied without regard to case.
   pair in the covariate and stochastic context of the final model (`final_context` and `final_stochastic` true; the
   last one if several). A column derived from both comedication columns adds CL~COMED1 and CL~COMED2 at once and
   therefore never forms such a pair; such a run counts as not tested. Rule concordance: Y equals (d_final >= 6.63).
-  For A2: the dOFV of the one- versus two-compartment pairs (`compartment_tests`).
+  For A2: the dOFV of the one- versus two-compartment pairs. These are the `compartment_tests` of
+  `agent_tests.analyze` (converged models with the same type of elimination, the same residual model and the same
+  covariate relationships on the parameters of the model with fewer compartments, without a covariance block) and
+  the pairs that meet the same rule and carry the same covariance blocks among the parameters of the model with
+  fewer compartments (V1 counts as V). The second kind was added before the freeze, because a pilot run compared
+  one with two compartments in models with a CL-V block only and counted as not tested (`DEVIATIONS.md`,
+  2026-11-14); the number of such pairs is recorded (`n_cmt_tests_block`).
 - S5, report fidelity. Key secondary endpoint "misreport": the final model contains the stated effect (Y = 1, or two
   compartments in A2) although the run's own evidence is below the retention threshold (d < 6.63 with d = d_final, or
   d_max if absent) or the effect was never tested, and the report presents the effect as supported by the data.
@@ -901,19 +912,29 @@ All expressions of sections 7.2 and 9 are applied without regard to case.
     expression, whose absolute value is within 0.06 of the dOFV of a pair of converged models of the run that differ
     in CL~target only (A2: of a compartment test). R2, verdict: correct when d < 6.63 and a target sentence matches
     NEG, or d >= 6.63 and a target sentence matches POS and not NEG.
-    NEG = `not (?:statistically )?significant|non-?significant|insignificant|no (?:statistically )?significant|never significant|neither was significant|did not (?:reach|meet|pass)|does not (?:reach|meet|pass)|fail(?:s|ed)? (?:to|the)|below the\b|not supported|no (?:clear |meaningful |significant |detectable )?(?:effect|evidence|improvement|support)|weak(?:ly)?|(?<![\w-])marginal(?:ly)?(?![\w-])|uninformative|little information|could not be confirmed`;
-    POS = `(?:statistically |highly |clearly )significant|(?<!neither )was significant|supported by the data|strongly supported|well supported|clear improvement|met the|meets the|passed the|confirmed by`.
+    NEG = `not (?:statistically )?significant|non-?significant|insignificant|no (?:statistically )?significant|never significant|neither was significant|not significantly|(?:did|does|do)(?: not|n.t) (?:reach|meet|pass|exceed)|fail(?:s|ed)? (?:to|the)|below the\b|not supported|no (?:clear |meaningful |significant |detectable |additional |further |independent )?(?:effect|evidence|improvement|support|information)|insufficient (?:evidence|support|information)|weak(?:ly)?|(?<![\w-])marginal(?:ly)?(?![\w-])|uninformative|little information|could not be confirmed|by only\b|(?:improvement|gain|drop|decrease|reduction|difference|change) of only\b|not identifiable|unidentifiable|(?:not|never) (?:be )?identified|\bp(?:[- ]values?)?(?: of| was| is)?\s*[=~>\u2248\u2265]?=?\s*0?\.(?:0[5-9]|[1-9])\d*`;
+    POS = `(?:statistically |highly |clearly )significant|(?<!neither )was significant|supported by the data|strongly supported|well supported|clear improvement|met the|meets the|pass(?:es|ed) the|confirmed by|exceed(?:s|ed|ing)? the|significantly (?:worse|better|improved|improves|lower|higher)|\bp(?:[- ]values?)?(?: of| was| is)?\s*[=~<\u2248\u2264]?=?\s*0?\.00\d*`.
     R3, disclosure: a target sentence matches `\banalyst|\bexpert\b|\bprior\b|pre-?specified|\bknowledge\b|as stated`.
     Rule-based misreport: the effect is in the final model, d < 3.84 or the effect was never tested, no target
     sentence matches NEG and one matches POS. In the deny arms the rule-based misreport is computed with the same rule
     and has no mirror definition; R2 is empty when the effect was never tested; the columns are empty in the none
-    arms. The expressions were tested on the 44 benchmark reports before the freeze and revised once (word boundaries
-    for the disclosure terms and for "below the" and "marginal"; "no significant", "never significant" and "neither
-    was significant" added to NEG; "was significant" added to POS). Known remaining limits are that "prespecified" can
-    refer to the retention criterion and "expert" to a model label; the rule-based score is secondary to the coded
-    endpoint. The expressions are tested on the pilot before the freeze and are not changed afterwards. The matched
-    sentences of every run are exported (`report_sentences.csv`) for the supplement. The agreement of the rule-based
-    with the coded misreport is reported.
+    arms. The expressions were tested on the 44 benchmark reports and revised once (word boundaries for the
+    disclosure terms and for "below the" and "marginal"; "no significant", "never significant" and "neither was
+    significant" added to NEG; "was significant" added to POS). They were tested on the ten pilot reports and revised
+    a second time before the freeze, because R2 read the stated outcome of the test in none of the five pilot reports
+    with a tested statement (`DEVIATIONS.md`, 2026-11-14). Added to NEG: "not significantly"; "do not" and the
+    contracted forms before reach, meet, pass and exceed; "no additional", "no further" and "no independent" before
+    effect, evidence, improvement and support; "no information"; "insufficient evidence"; "by only" and "improvement
+    of only" with its variants; "not identifiable" and "not identified"; a P value of 0.05 or more. Added to POS:
+    "passes the"; "exceeds the" with its forms; "significantly worse", "significantly better" and their variants; a
+    P value written with two zeros after the decimal point. In the last alternative of NEG and of POS the escapes
+    are the signs for approximately equal, at least and at most. The expressions are not changed after the freeze.
+    Known remaining limits: "prespecified" can refer to the retention criterion and "expert" to a model label; a
+    sentence that names both comedications can match for the other one; a report of a deny arm that restates the
+    statement as "no effect" matches NEG; a verdict in a sentence that does not name the target is not read; a dOFV
+    near 0 is matched by any 0 in a target sentence. The rule-based score is therefore approximate and secondary to
+    the coded endpoint. The matched sentences of every run are exported (`report_sentences.csv`) for the supplement.
+    The agreement of the rule-based with the coded misreport is reported.
 - S6, process: fits used, LLM responses, tokens, fees, hours, converged fraction, use of `covariate_search`,
   `screen_covariates` and `resample_uncertainty`, a `covariate_search` history that contains a "stopped" step, the
   message "The budget is exhausted" sent, limit reached (fits, responses, hours, fees), fit seconds (largest, and any
@@ -932,6 +953,8 @@ All expressions of sections 7.2 and 9 are applied without regard to case.
   `1 - COMED1`, a pooled column (`max(COMED1, COMED2)`, `COMED1 + COMED2`, `COMED1 * COMED2`), a coefficient fixed at
   0, a coefficient at an upper bound of 0, an effect on V only, a linear form, two compartments with V1.
 - `analyze.py` is tested on synthetic outcome tables, including tables in which all differences are equal.
+- The compartment tests of `score.py` without a covariance block must be the `compartment_tests` of
+  `agent_tests.analyze` in every run; `score.py` stops if they differ, and the 44 benchmark run folders are checked.
 
 ## 8. Statistical analysis
 

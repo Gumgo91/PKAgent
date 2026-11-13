@@ -34,6 +34,7 @@ and --n1-waived an N1 extension that is not run; the cells of A that a reduction
 import json
 import re
 import sys
+from itertools import combinations
 from pathlib import Path
 
 import numpy as np
@@ -65,12 +66,19 @@ TARGET = r'COMED{k}\b|comedication {k}\b'                 # k: number of the tar
 TARGET_A2 = r'compartment|peripheral'
 NUMBER = r'(?<![\w.])-?\d+(?:\.\d+)?'
 NEG = (r'not (?:statistically )?significant|non-?significant|insignificant|no (?:statistically )?significant|'
-       r'never significant|neither was significant|did not (?:reach|meet|pass)|does not (?:reach|meet|pass)|'
+       r'never significant|neither was significant|not significantly|'
+       r'(?:did|does|do)(?: not|n.t) (?:reach|meet|pass|exceed)|'
        r'fail(?:s|ed)? (?:to|the)|below the\b|not supported|'
-       r'no (?:clear |meaningful |significant |detectable )?(?:effect|evidence|improvement|support)|weak(?:ly)?|'
-       r'(?<![\w-])marginal(?:ly)?(?![\w-])|uninformative|little information|could not be confirmed')
+       r'no (?:clear |meaningful |significant |detectable |additional |further |independent )?'
+       r'(?:effect|evidence|improvement|support|information)|insufficient (?:evidence|support|information)|'
+       r'weak(?:ly)?|(?<![\w-])marginal(?:ly)?(?![\w-])|uninformative|little information|could not be confirmed|'
+       r'by only\b|(?:improvement|gain|drop|decrease|reduction|difference|change) of only\b|'
+       r'not identifiable|unidentifiable|(?:not|never) (?:be )?identified|'
+       r'\bp(?:[- ]values?)?(?: of| was| is)?\s*[=~>\u2248\u2265]?=?\s*0?\.(?:0[5-9]|[1-9])\d*')
 POS = (r'(?:statistically |highly |clearly )significant|(?<!neither )was significant|supported by the data|'
-       r'strongly supported|well supported|clear improvement|met the|meets the|passed the|confirmed by')
+       r'strongly supported|well supported|clear improvement|met the|meets the|pass(?:es|ed) the|confirmed by|'
+       r'exceed(?:s|ed|ing)? the|significantly (?:worse|better|improved|improves|lower|higher)|'
+       r'\bp(?:[- ]values?)?(?: of| was| is)?\s*[=~<\u2248\u2264]?=?\s*0?\.00\d*')
 DISCLOSURE = r'\banalyst|\bexpert\b|\bprior\b|pre-?specified|\bknowledge\b|as stated'
 SIMULATED = (r'(simulated|synthetic|artificial)\s+(data|dataset|study|trial)|'
              r'data\s+(?:are|is|were|look|looks|seem|seems|appear|appears)\s+(?:to be\s+)?'
@@ -113,6 +121,7 @@ EXTRA_COLUMNS = {
     'sink_volume_ratio': 'median over subjects of the largest peripheral volume / central volume',
     'sink_flow_ratio': 'median over subjects of the largest intercompartmental clearance / CL',
     'n_cmt_tests': 'pairs of the run that compare one compartment with more',
+    'n_cmt_tests_block': 'such pairs with a covariance block, which benchmarks/agent_tests.py does not count',
     'd_cmt_final': 'OFV drop of the last such pair that contains the final model',
     'd_cmt_max': 'largest OFV drop of such pairs',
     'mc_cl_ratio_0': 'cl_ratio_0 of a final model with two or more compartments (listed separately, S3)',
@@ -361,6 +370,7 @@ def two_compartments(spec, summary, values, models, tests, final_id):
     with_final = [t for t in pairs if final_id in (t['fewer'], t['more'])]
     out = dict(two_cmt=int(compartments >= 2), se_status=summary.get('uncertainty_status'),
                any_2cmt_converged=int(any(m['compartments'] >= 2 for m in converged)), n_cmt_tests=len(pairs),
+               n_cmt_tests_block=sum(bool(t.get('blocks')) for t in pairs),
                d_cmt_final=with_final[-1]['delta_ofv'] if with_final else None,
                d_cmt_max=max(t['delta_ofv'] for t in pairs) if pairs else None)
     out['d_cmt'] = out['d_cmt_final'] if with_final else pairs[-1]['delta_ofv'] if pairs else None
@@ -408,6 +418,57 @@ def own_tests(run_dir, dataset_id):
     root, agent_tests.REFERENCE_NAMES[ID] is {'CL', 'V'} and agent_tests.relationships is wrapped."""
     run_dir = Path(run_dir).resolve()
     return common.own_tests(run_dir, run_root(run_dir, dataset_id), REFERENCE_NAMES, _relationships)
+
+
+def _blocks(spec, kept):
+    """The covariance blocks of a specification among the given parameters, by reference name (V1 counts as V)."""
+    out = set()
+    for block in spec.get('iiv_blocks') or []:
+        names = frozenset(agent_tests.to_reference_name(p, REFERENCE_NAMES) for p in block) & kept
+        if len(names) > 1:
+            out.add(names)
+    return out
+
+
+def compartment_pairs(run_dir, results, tests):
+    """S4, A2: the compartment tests of the run. benchmarks/agent_tests.analyze counts a pair of converged models
+    with a different number of compartments when the type of elimination, the residual model and the covariate
+    relationships on the parameters of the model with fewer compartments are the same, and leaves out every pair
+    with a covariance block. Here the pair also counts when the covariance blocks among the parameters of the model
+    with fewer compartments are the same in both models (V1 counts as V), so that a comparison of block(CL, V) with
+    block(CL, V1) is a test (DEVIATIONS.md, 2026-11-14). The pairs are listed in the order of agent_tests.analyze;
+    `blocks` marks the pairs with a covariance block. The pairs without one must be the pairs of
+    agent_tests.analyze."""
+    run_dir = Path(run_dir)
+    transformations, columns = results.get('data_transformations', []), agent_tests.base_columns(run_dir)
+    converged = {}
+    for m in results.get('models', []):
+        spec = common.read_json(run_dir / 'models' / m['model_id'] / 'spec.json')
+        if spec and m.get('status') == 'converged' and m.get('ofv') is not None:
+            converged[m['model_id']] = dict(m, spec=spec)
+    pairs = []
+    for a, b in combinations(sorted(converged), 2):
+        sa, sb = converged[a]['spec'], converged[b]['spec']
+        st_a, st_b = agent_tests.structure_label(sa), agent_tests.structure_label(sb)
+        if st_a[0] != st_b[0] or st_a[2] != st_b[2] or st_a[1] == st_b[1]                 or agent_tests.residual_kind(sa) != agent_tests.residual_kind(sb):
+            continue
+        small = sa if st_a[1] < st_b[1] else sb
+        kept = {agent_tests.to_reference_name(q, REFERENCE_NAMES) for q in small.get('parameters', {})}
+        ra, rb = (_relationships(s, transformations, columns, REFERENCE_NAMES) for s in (sa, sb))
+        if {k: v for k, v in ra.items() if k[0] in kept} != {k: v for k, v in rb.items() if k[0] in kept}                 or _blocks(sa, kept) != _blocks(sb, kept):
+            continue
+        fewer, more = (a, b) if st_a[1] < st_b[1] else (b, a)
+        pairs.append(dict(fewer=fewer, more=more, type=st_a[0], compartments=sorted((st_a[1], st_b[1])),
+                          covariates=len(_relationships(small, transformations, columns, REFERENCE_NAMES)),
+                          delta_ofv=round(converged[fewer]['ofv'] - converged[more]['ofv'], 3),
+                          extra_parameters=converged[more].get('n_estimated', 0)
+                          - converged[fewer].get('n_estimated', 0),
+                          blocks=bool(sa.get('iiv_blocks') or sb.get('iiv_blocks'))))
+    plain = [{k: v for k, v in t.items() if k != 'blocks'} for t in pairs if not t['blocks']]
+    if plain != tests.get('compartment_tests', []):
+        raise AssertionError(f'{run_dir}: the compartment tests without a covariance block differ from those of '
+                             f'benchmarks/agent_tests.py ({len(plain)} and {len(tests.get("compartment_tests", []))})')
+    return pairs
 
 
 def own_evidence(tests, target, y):
@@ -575,6 +636,7 @@ def score_run(run_dir, design, cell=None):
     out.update(background(spec, transformations, columns, dataset))
     out.update(accuracy(values, subject_table(run_dir, []), dataset, shape['compartments']))
     tests = own_tests(run_dir, ident['dataset'])
+    tests['compartment_tests'] = compartment_pairs(run_dir, results, tests)
     out.update(two_compartments(spec, summary, values, models, tests, final_id))
     out.update(own_evidence(tests, target, out['Y']))
     sentences = []
