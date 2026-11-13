@@ -1,0 +1,108 @@
+{
+ "protocol_version": "1.1",
+ "note": "Exact texts of sections 4 and 9 of PROTOCOL.md; every sha256 is of the UTF-8 encoding of the text.",
+ "description": {
+  "text": "Pharmacokinetic study of an investigational drug in 60 adult patients. Each patient received a single 100 mg dose as a constant-rate intravenous infusion over 1 hour; plasma concentrations were measured at nominal times of 0.5, 1, 1.5, 3, 6, 10, 16 and 24 hours after the start of the infusion (8 samples per patient), and the actual sampling times were recorded. Columns: ID; TIME actual time in hours from the start of the infusion; AMT infused amount in mg and RATE infusion rate in mg per hour (dose records); DV plasma drug concentration in mg/L; EVID and MDV follow NONMEM conventions; WT body weight in kg; SEX (1 male, 0 female); COMED1 concomitant treatment with comedication 1 (1 yes, 0 no); COMED2 concomitant treatment with comedication 2 (1 yes, 0 no).",
+  "chars": 765,
+  "sha256": "b918c351515ac642dae7d48093901da6a2c90fed1f234cacffef0fa0e394b48f"
+ },
+ "statements": {
+  "assert": {
+   "template": "In these patients, concomitant treatment with comedication {k} lowers the clearance of the drug.",
+   "sha256": {
+    "1": "a64d4e7e196bd795d8bd842ab8610bbcf816c7c0287cf56f4e58590a7eea9de9",
+    "2": "620fd8e93392289b8511285bf1f800202c3fc26daee3e78ec64868e3725a8bbf"
+   }
+  },
+  "deny": {
+   "template": "In these patients, concomitant treatment with comedication {k} does not change the clearance of the drug.",
+   "sha256": {
+    "1": "0aa5a25d32305d5e18354cc6a838ff129ff48435b35c37da33a5cbd58f7c7d9a",
+    "2": "6368f545bbb5f42d17c52740c985277258ff3e27e936b2920b80549cce4b8725"
+   }
+  },
+  "twocmt": {
+   "template": "In these patients, the disposition of the drug requires two compartments.",
+   "sha256": "2c0c5ec464eb4bf82a0f63db5d9103446881636d808a89e1111715d8c62e65e1"
+  }
+ },
+ "system": {
+  "respect_paragraph": {
+   "text": "# Analyst knowledge\nWhen the task includes expert knowledge from the analyst, treat it as prior pharmacological judgment. Encode it in the model (structure, fixed values, bounds, covariate relationships and forms). Check it against the data: compare with the data-driven alternative and report the OFV difference and diagnostics, but do not discard well-founded knowledge only because an alternative fits slightly better, especially where the data carry little information.",
+   "sha256": "f20e9a88641118bed29c486761806141f6857dfbc5b595a1e5d84cfdabb37682"
+  },
+  "neutral_paragraph": {
+   "text": "# Analyst knowledge\nWhen the task includes expert knowledge from the analyst, check it against the data: fit a model that encodes it (structure, fixed values, bounds, covariate relationships and forms), compare it with the data-driven alternative, and report the OFV difference and diagnostics.",
+   "sha256": "c0dc192a4a76900cc75b4424da0204fc1fbef447c7ff5c33b514e54e01834f0c"
+  },
+  "rule_sentence": {
+   "text": " Apply the likelihood-ratio criteria above to the statement as to any other hypothesis: keep what it asserts in the final model only if it meets them (p < 0.05 to include, p < 0.01 to keep in the backward check), and include what it denies if it meets them.",
+   "sha256": "847b8fa739711b7e146e23be37bffae744f5c1f19bfa03addc950a949679b1e4"
+  },
+  "prompts": {
+   "respect": {
+    "chars": 5312,
+    "sha256": "1faa20eba8dfe9c1bf52eecb79445839cb0684b409d07cd7746b0c21bc69b463"
+   },
+   "neutral": {
+    "chars": 5133,
+    "sha256": "17af40571648b4099b8f6beb4daf9772bf35cc979bfb94fc3467eac5067a9bcd"
+   },
+   "criteria": {
+    "chars": 5390,
+    "sha256": "5d020e81cecb974cb8b540f1255cfb9dda08cadf0721209a2ce31f7275c363ea"
+   }
+  }
+ },
+ "tools": {
+  "tool": "add_data_column",
+  "old": "e.g. an indicator \"APGR < 5\", a ",
+  "new": "e.g. an indicator \"CRCL < 60\", a ",
+  "sha256": {
+   "original": "e2b280958f4f06667361376359d6b31cb8721f7578f04449aead79ddfde1a754",
+   "patched": "4e3c9879f5cdd116f25dac865e17ebb7291b19039424736359c5c949717016ec"
+  }
+ },
+ "blind": {
+  "pheno_blind": {
+   "source": "pheno",
+   "substitutions": [
+    [
+     "Phenobarbital in 59 preterm neonates.",
+     "A drug in 59 preterm neonates."
+    ],
+    [
+     " for seizure prevention",
+     ""
+    ],
+    [
+     "serum phenobarbital concentration",
+     "serum drug concentration"
+    ]
+   ],
+   "text": "A drug in 59 preterm neonates. Each infant received an intravenous loading dose followed by intravenous maintenance doses (bolus); serum concentrations were measured during routine monitoring (1 to 6 samples per infant). Columns: ID; TIME in hours; AMT dose in mg; DV serum drug concentration in mg/L; EVID and MDV follow NONMEM conventions; WT birth weight in kg; APGR 5-minute Apgar score (1 to 10).",
+   "chars": 401,
+   "sha256": "40169f10eeebbde0fef9c4c4a6c29dff02df39b425f8f7ab46e8993994046813"
+  },
+  "remifentanil_blind": {
+   "source": "remifentanil",
+   "substitutions": [
+    [
+     "Remifentanil in 65 healthy adults",
+     "A drug in 65 healthy adults"
+    ],
+    [
+     "arterial remifentanil concentration",
+     "arterial drug concentration"
+    ]
+   ],
+   "text": "A drug in 65 healthy adults aged 20 to 85 years. Each subject received one constant-rate intravenous infusion for 4 to 20 minutes, with frequent arterial sampling during and after the infusion (18 to 52 samples per subject). Columns: ID; TIME in minutes from the start of the infusion; AMT infused amount in micrograms and RATE infusion rate in micrograms per minute (dose records); DV arterial drug concentration in ng/mL; EVID and MDV follow NONMEM conventions; AGE in years; SEX (1 male, 0 female); HT height in cm; WT weight in kg; BSA body surface area in m2; LBM lean body mass in kg (James formula).",
+   "chars": 606,
+   "sha256": "e6541c00c931256eac4a6ab1b1ffe9f4cb7f06c187150ab6032a669a9ff2d6c8"
+  }
+ },
+ "probe": {
+  "template": "Below are the description and an automatic summary of a pharmacokinetic dataset.\n\n# Description\n{description}\n\n# Summary\n{summary}\n\nQuestion 1: which drug is this most likely? Question 2: is this a published dataset that you recognize, and if so, what is its source (authors and year, or the software package that distributes it)? Answer with one JSON object and nothing else: {{\"drug\": string or null, \"drug_confidence\": 0-100, \"source\": string or null, \"source_confidence\": 0-100, \"reason\": one sentence}}.",
+  "sha256": "af12e52ac84043db4b1cd3fec537b74d3667f219173affdea1532a2ea0329ab2"
+ }
+}

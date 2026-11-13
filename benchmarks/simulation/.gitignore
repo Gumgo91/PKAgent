@@ -1,0 +1,14 @@
+# Outputs of the simulation experiment that are not tracked (PROTOCOL.md, section 12): the frozen engine,
+# calibration and run outputs, evaluations, and copies of benchmark data that are not redistributed.
+/_engine/
+/calibration/
+/pilot/
+/runs/
+/runs_failed/
+/evaluation/
+/blind/data/
+/blind/runs/
+/blind/evaluation/
+
+# Throwaway output of tests
+/smoke/

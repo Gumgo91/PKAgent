@@ -1,0 +1,2 @@
+# The simulated datasets are identified by the sha256 of their bytes (design.json): no line-ending conversion.
+data/*/pk_data.csv -text
